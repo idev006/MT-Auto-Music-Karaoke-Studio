@@ -44,6 +44,20 @@ def test_asr_guided_proposal_preserves_canonical_lines_and_vocal_window():
     assert timing[0].end == timing[1].start
 
 
+def test_timing_falls_back_when_asr_covers_only_a_short_song_island():
+    lyrics = tuple(f"บรรทัด {index}" for index in range(20))
+    transcript = (
+        TranscriptSegment(107.0, 110.0, "ช่วงสั้น"),
+        TranscriptSegment(110.0, 124.0, "กลางเพลง"),
+    )
+
+    timing = propose_timing(lyrics, transcript, audio_duration=273.0)
+
+    assert timing[0].start == 10.0
+    assert timing[-1].end == 263.0
+    assert any(line.start <= 47.0 <= line.end for line in timing)
+
+
 def test_ass_generation_escapes_override_syntax(tmp_path: Path):
     timing = propose_timing(
         (r"ข้อความ {อันตราย} \N",),

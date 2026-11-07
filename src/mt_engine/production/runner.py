@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from mutagen.mp3 import MP3
+
 from .intake import discover_song
 from .lyrics import extract_lyrics, propose_timing, transcribe
 from .media import embed_cover, run_ffmpeg_render, sha256_file, video_canvas, write_ass
@@ -106,7 +108,10 @@ def produce_song(
         model_cache=dest_root.resolve() / ".models" / "faster-whisper",
         cpu_threads=cpu_threads,
     )
-    timing = propose_timing(lyric_lines, transcript)
+    audio_duration = float(MP3(assets.mp3).info.length)
+    asr_window_duration = transcript[-1].end - transcript[0].start
+    full_song_fallback_used = asr_window_duration < audio_duration * 0.35
+    timing = propose_timing(lyric_lines, transcript, audio_duration=audio_duration)
     canvas = video_canvas(assets.image)
     ass_path = staging / "karaoke.ass"
     write_ass(timing, ass_path, canvas=canvas)
@@ -128,7 +133,14 @@ def produce_song(
 
     timing_payload = {
         "schema_version": 1,
-        "method": "faster-whisper ASR-guided proportional line timing",
+        "method": (
+            "whole-song proportional fallback after insufficient faster-whisper coverage"
+            if full_song_fallback_used
+            else "faster-whisper ASR-guided proportional line timing"
+        ),
+        "full_song_fallback_used": full_song_fallback_used,
+        "asr_window_duration_seconds": asr_window_duration,
+        "audio_duration_seconds": audio_duration,
         "review_required": True,
         "test_approval_override": True,
         "transcription": transcription_info,

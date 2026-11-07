@@ -77,7 +77,10 @@ def transcribe(
 
 
 def propose_timing(
-    lyrics: tuple[str, ...], transcript: tuple[TranscriptSegment, ...]
+    lyrics: tuple[str, ...],
+    transcript: tuple[TranscriptSegment, ...],
+    *,
+    audio_duration: float | None = None,
 ) -> tuple[TimedLine, ...]:
     """Allocate canonical lyric lines across the ASR-observed vocal window by text weight.
 
@@ -85,6 +88,14 @@ def propose_timing(
     """
     start = max(0.0, transcript[0].start)
     end = max(start + 0.1, transcript[-1].end)
+    observed_duration = end - start
+    # Singing over accompaniment can make a small Whisper model return only a
+    # short island in the middle of a song. Never compress the entire lyric
+    # sheet into that island: fall back to a conservative whole-song window.
+    if audio_duration and observed_duration < audio_duration * 0.35:
+        edge_padding = min(10.0, audio_duration * 0.05)
+        start = edge_padding
+        end = max(start + 0.1, audio_duration - edge_padding)
     weights = [max(1, len("".join(line.split()))) for line in lyrics]
     total_weight = sum(weights)
     duration = end - start
