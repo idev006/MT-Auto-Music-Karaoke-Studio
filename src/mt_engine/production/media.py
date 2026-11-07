@@ -10,8 +10,19 @@ from pathlib import Path
 from typing import Any
 
 from mutagen.id3 import APIC, ID3
+from PIL import Image
 
 from .lyrics import TimedLine
+
+LANDSCAPE_CANVAS = (1920, 1080)
+PORTRAIT_CANVAS = (1080, 1920)
+
+
+def video_canvas(image: Path) -> tuple[int, int]:
+    """Select the default output canvas from the source image orientation."""
+    with Image.open(image) as opened:
+        width, height = opened.size
+    return PORTRAIT_CANVAS if height > width else LANDSCAPE_CANVAS
 
 
 def sha256_file(path: Path) -> str:
@@ -61,11 +72,17 @@ def _ass_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\N")
 
 
-def write_ass(lines: tuple[TimedLine, ...], destination: Path) -> None:
-    header = """[Script Info]
+def write_ass(
+    lines: tuple[TimedLine, ...],
+    destination: Path,
+    *,
+    canvas: tuple[int, int] = LANDSCAPE_CANVAS,
+) -> None:
+    width, height = canvas
+    header = f"""[Script Info]
 ScriptType: v4.00+
-PlayResX: 1920
-PlayResY: 1080
+PlayResX: {width}
+PlayResY: {height}
 WrapStyle: 2
 ScaledBorderAndShadow: yes
 
@@ -96,11 +113,13 @@ def run_ffmpeg_render(
     ass_path: Path,
     destination: Path,
     preset: str,
+    canvas: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
+    width, height = canvas or video_canvas(image)
     filtergraph = (
-        "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,"
-        "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,ass=karaoke.ass[v]"
+        f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,ass=karaoke.ass[v]"
     )
     command = [
         str(ffmpeg),

@@ -4,6 +4,8 @@
 
 This project is a local-first, portable Windows application with a Python headless production engine. Each of **1–N user-selected song directories** provides an existing MP3, optional cover/background images and optional TXT/DOCX lyrics. The engine will **embed a cover image into a copy of the existing MP3 without audio re-encoding** and create an **MP4 with the user-selected still image shown throughout the song plus synchronized Thai karaoke text**. No music generation is included.
 
+The default video canvas follows the selected background image: portrait images produce 1080×1920 (9:16), while landscape and square images produce 1920×1080 (16:9).
+
 ## Platform decisions
 - **CPython 3.12.10 x64** is the primary development runtime.
 - **SQLite + SQLAlchemy 2.x + Alembic** for operational SSOT and all schema migrations.

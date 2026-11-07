@@ -14,7 +14,7 @@
 
 ## MP4 pipeline
 - R-201: Use user-selected still image for entire MP4; do not invent substitute imagery.
-- R-202: Use original song as audio source; H.264/AAC 1920x1080 30fps default.
+- R-202: Use the original song as audio source and H.264/AAC at 30 fps. Select the default canvas from the background image orientation: portrait produces 1080x1920 (9:16); landscape produces 1920x1080 (16:9). Square images use the landscape default.
 - R-203: Lyrics are optional input; without them, the MP4 branch needs transcription or user input.
 - R-204: Lyrics SSOT and timing SSOT are distinct from visual configuration.
 - R-205: Thai phrasing, repeat choruses and word/syllable highlighting must be supported in intended full product.

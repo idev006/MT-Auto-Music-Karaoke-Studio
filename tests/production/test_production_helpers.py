@@ -1,10 +1,11 @@
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from mt_engine.production.intake import IntakeError, discover_song
 from mt_engine.production.lyrics import TranscriptSegment, propose_timing
-from mt_engine.production.media import write_ass
+from mt_engine.production.media import LANDSCAPE_CANVAS, PORTRAIT_CANVAS, video_canvas, write_ass
 
 
 def test_discovery_requires_explicit_single_image_dual_role(tmp_path: Path):
@@ -56,3 +57,35 @@ def test_ass_generation_escapes_override_syntax(tmp_path: Path):
     assert r"\{อันตราย\}" in content
     assert r"\\N" in content
     assert r"{\kf200}" in content
+
+
+@pytest.mark.parametrize(
+    ("image_size", "expected_canvas"),
+    [
+        ((800, 1200), PORTRAIT_CANVAS),
+        ((1200, 800), LANDSCAPE_CANVAS),
+        ((1000, 1000), LANDSCAPE_CANVAS),
+    ],
+)
+def test_video_canvas_follows_image_orientation(
+    tmp_path: Path,
+    image_size: tuple[int, int],
+    expected_canvas: tuple[int, int],
+):
+    image = tmp_path / "background.png"
+    Image.new("RGB", image_size).save(image)
+
+    assert video_canvas(image) == expected_canvas
+
+
+def test_ass_play_resolution_matches_portrait_canvas(tmp_path: Path):
+    destination = tmp_path / "portrait.ass"
+    write_ass(
+        (propose_timing(("เนื้อเพลง",), (TranscriptSegment(1.0, 3.0, "เนื้อเพลง"),))[0],),
+        destination,
+        canvas=PORTRAIT_CANVAS,
+    )
+
+    content = destination.read_text(encoding="utf-8-sig")
+    assert "PlayResX: 1080" in content
+    assert "PlayResY: 1920" in content

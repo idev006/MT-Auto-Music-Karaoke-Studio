@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from .intake import discover_song
 from .lyrics import extract_lyrics, propose_timing, transcribe
-from .media import embed_cover, run_ffmpeg_render, sha256_file, write_ass
+from .media import embed_cover, run_ffmpeg_render, sha256_file, video_canvas, write_ass
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,8 +107,9 @@ def produce_song(
         cpu_threads=cpu_threads,
     )
     timing = propose_timing(lyric_lines, transcript)
+    canvas = video_canvas(assets.image)
     ass_path = staging / "karaoke.ass"
-    write_ass(timing, ass_path)
+    write_ass(timing, ass_path, canvas=canvas)
     staged_mp4 = staging / "karaoke.mp4"
     video_probe = run_ffmpeg_render(
         ffmpeg,
@@ -118,6 +119,7 @@ def produce_song(
         ass_path=ass_path,
         destination=staged_mp4,
         preset=ffmpeg_preset,
+        canvas=canvas,
     )
 
     source_hash_after = sha256_file(assets.mp3)

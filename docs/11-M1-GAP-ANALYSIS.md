@@ -19,7 +19,7 @@ Evidence date: 2026-11-07. Scope: local repository at the current working tree. 
 | Single-folder asset intake | VERIFIED (vertical slice) | Unicode folder discovery requires exactly one MP3 and one image; assigning one image to cover and background requires an explicit flag. Multi-folder intake remains absent. |
 | Headless CLI | IMPLEMENTED (vertical slice) | `mt-karaoke produce-song` produces real MP3/MP4 artifacts but does not yet drive the SQLite coordinator/JobWorker. |
 | MP3 artwork output | VERIFIED (fixture) | APIC readback matches the input image and MP3 audio-frame payload hashes are identical. |
-| Karaoke MP4 output | VERIFIED (fixture) | FFmpeg full decode passed; ffprobe reports 1920x1080 H.264/yuv420p plus AAC. Timing remains review-required. |
+| Karaoke MP4 output | VERIFIED (fixture) | FFmpeg full decode passed; portrait fixture reports 1080x1920 H.264/yuv420p plus AAC. Automated tests cover portrait, landscape and square canvas selection. Timing remains review-required. |
 | Remote CI | DOCUMENTED, NOT VERIFIED | Workflow exists; this local run does not establish GitHub Actions status. |
 
 ## Local quality evidence
