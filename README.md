@@ -1,6 +1,6 @@
 # MT Auto Music & Karaoke Studio
 
-**Project foundation baseline v0.1.0 | Milestone 1 persistence slice implemented; engine features not finished.**
+**Headless media vertical slice v0.2.0 | Real single-folder E2E verified; orchestration and alignment quality remain unfinished.**
 
 This project is a local-first, portable Windows application with a Python headless production engine. Each of **1–N user-selected song directories** provides an existing MP3, optional cover/background images and optional TXT/DOCX lyrics. The engine will **embed a cover image into a copy of the existing MP3 without audio re-encoding** and create an **MP4 with the user-selected still image shown throughout the song plus synchronized Thai karaoke text**. No music generation is included.
 
@@ -37,4 +37,6 @@ Start with [Documentation Index](docs/README.md) for detailed links. Key entrypo
 - [Windows portable / UI](docs/08-WINDOWS-PORTABLE-AND-UI.md)
 
 ## Current implementation status
-Present: repository governance docs, Python package foundation, PathManager prototype, Arabic numeral display helper, SQLAlchemy operational models, initial Alembic revision, migration compatibility guard, basic tests and a Windows GitHub Actions workflow. Not yet present: operational repositories, state-machine/orchestrator implementation, cover embedding, alignment, karaoke video renderer, PySide6 UI, runnable portable EXE. CI passing status has not been independently verified. See [Traceability Matrix](docs/10-REQUIREMENT-TRACEABILITY.md) and [M1 Gap Analysis](docs/11-M1-GAP-ANALYSIS.md).
+Present: persistence and state foundations, fenced run repository, safe migrations, versioned engine contracts, a real single-folder headless CLI, ID3 cover embedding without MP3 audio re-encoding, faster-whisper transcription, ASS karaoke generation, and FFmpeg H.264/AAC rendering with decode/probe QC. The Thai fixture `เหงาเหลือเกิน` completed locally into the matching destination folder; see [E2E evidence](docs/12-E2E-MEDIA-EVIDENCE.md).
+
+This is a vertical slice, not a production release. The CLI currently runs the media path directly and is not yet connected to the SQLite coordinator/JobWorker/resource governor. Timing is an ASR-guided proposal requiring human review; no alignment KPI is claimed. Multi-folder scheduling, PySide6 UI, and portable EXE remain pending. CI status has not been independently verified.

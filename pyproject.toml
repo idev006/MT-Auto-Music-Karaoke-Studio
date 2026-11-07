@@ -10,7 +10,14 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
   "SQLAlchemy>=2.0,<3.0",
   "alembic>=1.13,<2.0",
+  "av>=11,<19",
+  "faster-whisper>=1.1,<2.0",
+  "mutagen>=1.47,<2.0",
+  "Pillow>=11,<13",
 ]
+
+[project.scripts]
+mt-karaoke = "mt_engine.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]

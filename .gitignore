@@ -8,5 +8,7 @@ build/
 *.egg-info/
 data/
 output/
+src_for_test/
+dest_for_test/
 *.partial
 *.log

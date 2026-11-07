@@ -16,17 +16,19 @@ Evidence date: 2026-11-07. Scope: local repository at the current working tree. 
 | Versioned boundary contracts | VERIFIED (v1 foundation) | Immutable fenced ToolRequest/ToolResult, DomainEvent and ArtifactManifest contracts plus deterministic primitive serialization and architecture import tests. |
 | Batch/Job/JobRun/Branch/Artifact/Review state machines | VERIFIED (domain foundation) | Typed enums, legal transition guards and branch aggregation truth tests are implemented; persistence integration is pending. |
 | Batch Coordinator and JobWorker | NOT IMPLEMENTED | One-owner whole-run execution, shared HEAVY token, cancel race and stale-result rejection are absent. |
-| Multi-folder asset intake | NOT IMPLEMENTED | Discovery, classification and ambiguity contracts have no implementation. |
-| Headless CLI | NOT IMPLEMENTED | No command entry point exists. |
+| Single-folder asset intake | VERIFIED (vertical slice) | Unicode folder discovery requires exactly one MP3 and one image; assigning one image to cover and background requires an explicit flag. Multi-folder intake remains absent. |
+| Headless CLI | IMPLEMENTED (vertical slice) | `mt-karaoke produce-song` produces real MP3/MP4 artifacts but does not yet drive the SQLite coordinator/JobWorker. |
+| MP3 artwork output | VERIFIED (fixture) | APIC readback matches the input image and MP3 audio-frame payload hashes are identical. |
+| Karaoke MP4 output | VERIFIED (fixture) | FFmpeg full decode passed; ffprobe reports 1920x1080 H.264/yuv420p plus AAC. Timing remains review-required. |
 | Remote CI | DOCUMENTED, NOT VERIFIED | Workflow exists; this local run does not establish GitHub Actions status. |
 
 ## Local quality evidence
 
 - Environment: Windows, CPython 3.12.10 x64.
-- `python -m pytest -q`: 53 passed, 0 failed, 0 skipped.
+- `python -m pytest -q`: 57 passed, 0 failed, 0 skipped.
 - `python -m ruff check src tests migrations`: passed with no findings.
-- No KPI score is claimed beyond these test counts; media, performance, portability and remote-CI gates were not run.
+- Real-media fixture evidence is recorded in document 12. No alignment, concurrency, performance, portability or remote-CI KPI is claimed.
 
 ## Next dependency-ordered slice
 
-Complete typed error/whole-run retry and run/cancel repository commands before the Batch Coordinator and JobWorker.
+Connect the proven media adapters to typed error/whole-run retry commands, then implement the Batch Coordinator, one-folder JobWorker and shared HEAVY resource token before enabling multi-folder execution.

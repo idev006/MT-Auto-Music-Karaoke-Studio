@@ -22,6 +22,7 @@ Documentation baseline date: 2026-11-07. **Milestone 1 persistence slice is impl
 17. [Contract Registry](contracts/README.md) — planned versioned contracts.
 18. [M1 Gap Analysis](11-M1-GAP-ANALYSIS.md) — evidence-backed implementation status and next dependency.
 19. [Agile/Kanban Product Delivery Plan](superpowers/plans/2026-11-07-product-delivery-kanban.md) — phased execution, WIP policy and acceptance gates.
+20. [Real-media E2E Evidence](12-E2E-MEDIA-EVIDENCE.md) — fixture hashes, media QC and explicit timing limitation.
 
 ## Current decisions
 - Windows x64 primary development runtime Python 3.12.10 in a local virtual environment.

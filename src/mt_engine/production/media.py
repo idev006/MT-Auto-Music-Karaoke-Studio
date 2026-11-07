@@ -1,0 +1,161 @@
+"""MP3 cover, ASS subtitle, FFmpeg render and media verification adapters."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any
+
+from mutagen.id3 import APIC, ID3
+
+from .lyrics import TimedLine
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def mp3_audio_payload_hash(path: Path) -> str:
+    data = path.read_bytes()
+    offset = 0
+    if data.startswith(b"ID3") and len(data) >= 10:
+        size = (data[6] << 21) | (data[7] << 14) | (data[8] << 7) | data[9]
+        offset = 10 + size + (10 if data[5] & 0x10 else 0)
+    end = len(data) - 128 if len(data) >= 128 and data[-128:-125] == b"TAG" else len(data)
+    return hashlib.sha256(data[offset:end]).hexdigest()
+
+
+def embed_cover(source_mp3: Path, image: Path, destination: Path) -> dict[str, Any]:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source_mp3, destination)
+    tags = ID3(destination)
+    tags.delall("APIC")
+    mime = "image/png" if image.suffix.lower() == ".png" else "image/jpeg"
+    tags.add(APIC(encoding=3, mime=mime, type=3, desc="Cover", data=image.read_bytes()))
+    tags.save(destination, v2_version=3)
+    readback = ID3(destination).getall("APIC")
+    return {
+        "apic_count": len(readback),
+        "cover_sha256": hashlib.sha256(readback[0].data).hexdigest() if readback else None,
+        "source_audio_payload_sha256": mp3_audio_payload_hash(source_mp3),
+        "output_audio_payload_sha256": mp3_audio_payload_hash(destination),
+    }
+
+
+def _ass_time(seconds: float) -> str:
+    centiseconds = max(0, round(seconds * 100))
+    hours, remainder = divmod(centiseconds, 360000)
+    minutes, remainder = divmod(remainder, 6000)
+    secs, cs = divmod(remainder, 100)
+    return f"{hours}:{minutes:02d}:{secs:02d}.{cs:02d}"
+
+
+def _ass_escape(text: str) -> str:
+    return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\N")
+
+
+def write_ass(lines: tuple[TimedLine, ...], destination: Path) -> None:
+    header = """[Script Info]
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 2
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Karaoke,Tahoma,56,&H00FFFFFF,&H0000D7FF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,4,1,2,120,120,70,1
+
+[Events]
+Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
+"""
+    events = []
+    for line in lines:
+        duration_cs = max(1, round((line.end - line.start) * 100))
+        text = _ass_escape(line.text)
+        events.append(
+            f"Dialogue: 0,{_ass_time(line.start)},{_ass_time(line.end)},Karaoke,,0,0,0,,"
+            f"{{\\kf{duration_cs}}}{text}"
+        )
+    destination.write_text(header + "\n".join(events) + "\n", encoding="utf-8-sig")
+
+
+def run_ffmpeg_render(
+    ffmpeg: Path,
+    ffprobe: Path,
+    *,
+    image: Path,
+    audio: Path,
+    ass_path: Path,
+    destination: Path,
+    preset: str,
+) -> dict[str, Any]:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    filtergraph = (
+        "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,"
+        "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,ass=karaoke.ass[v]"
+    )
+    command = [
+        str(ffmpeg),
+        "-hide_banner",
+        "-y",
+        "-loop",
+        "1",
+        "-framerate",
+        "30",
+        "-i",
+        str(image),
+        "-i",
+        str(audio),
+        "-filter_complex",
+        filtergraph,
+        "-map",
+        "[v]",
+        "-map",
+        "1:a:0",
+        "-c:v",
+        "libx264",
+        "-preset",
+        preset,
+        "-tune",
+        "stillimage",
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-shortest",
+        "-movflags",
+        "+faststart",
+        str(destination),
+    ]
+    subprocess.run(command, cwd=ass_path.parent, check=True)
+    subprocess.run(
+        [str(ffmpeg), "-v", "error", "-i", str(destination), "-f", "null", "-"],
+        check=True,
+    )
+    probe = subprocess.run(
+        [
+            str(ffprobe),
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration,size:stream=codec_type,codec_name,width,height,pix_fmt",
+            "-of",
+            "json",
+            str(destination),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return json.loads(probe.stdout)
