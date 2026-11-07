@@ -25,7 +25,7 @@ Documentation baseline date: 2026-11-07. **Milestone 1 persistence slice is impl
 
 ## Current decisions
 - Windows x64 primary development runtime Python 3.12.10 in a local virtual environment.
-- SQLite + SQLAlchemy 2.x + Alembic required. Revisions `106a0b13ddd3` and `b7f41c92a003` implement the operational/ADR-0003 foundation; backup/restore orchestration remains pending.
+- SQLite + SQLAlchemy 2.x + Alembic required. Revisions `106a0b13ddd3` and `b7f41c92a003` implement the operational/ADR-0003 foundation; safe upgrade includes backup, disk preflight and failure restore.
 - PySide6 portable app follows a headless Python engine; no Installer.exe.
 - Existing MP3 remains the audio source; embed cover only into a copy; separate MP4 with a user-provided still image and synchronized lyrics.
 - Multiple folders (1–N) with independent jobs and partial success behavior.

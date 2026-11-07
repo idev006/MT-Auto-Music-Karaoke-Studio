@@ -74,15 +74,15 @@ class RunRepository:
                 f"Job {job_id!r} revision is {job.revision}, expected {expected_job_revision}"
             )
         if job.active_run_id is not None:
-            raise ActiveRunExistsError(f"Job {job_id!r} already has active run {job.active_run_id!r}")
+            raise ActiveRunExistsError(
+                f"Job {job_id!r} already has active run {job.active_run_id!r}"
+            )
 
         current_job_state = JobState(job.state)
         require_transition(current_job_state, JobState.QUEUED)
         run_number = (
             session.scalar(
-                select(func.coalesce(func.max(JobRun.run_number), 0)).where(
-                    JobRun.job_id == job_id
-                )
+                select(func.coalesce(func.max(JobRun.run_number), 0)).where(JobRun.job_id == job_id)
             )
             or 0
         ) + 1

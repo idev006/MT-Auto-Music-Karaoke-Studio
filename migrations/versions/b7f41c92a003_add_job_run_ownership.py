@@ -67,9 +67,7 @@ def upgrade() -> None:
     )
     with op.batch_alter_table("jobs") as batch_op:
         batch_op.add_column(sa.Column("active_run_id", sa.String(length=36), nullable=True))
-        batch_op.create_foreign_key(
-            "fk_jobs_active_run_id", "job_runs", ["active_run_id"], ["id"]
-        )
+        batch_op.create_foreign_key("fk_jobs_active_run_id", "job_runs", ["active_run_id"], ["id"])
     with op.batch_alter_table("artifacts") as batch_op:
         batch_op.add_column(sa.Column("run_id", sa.String(length=36), nullable=True))
         batch_op.add_column(sa.Column("operation_id", sa.String(length=64), nullable=True))

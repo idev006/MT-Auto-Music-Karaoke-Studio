@@ -103,9 +103,7 @@ def test_create_run_is_atomic_with_branches_and_outbox(tmp_path: Path):
         assert job.active_run_id == "r1"
         assert job.state == JobState.QUEUED.value
         assert job.revision == 2
-        branches = session.scalars(
-            select(JobRunBranch).where(JobRunBranch.run_id == "r1")
-        ).all()
+        branches = session.scalars(select(JobRunBranch).where(JobRunBranch.run_id == "r1")).all()
         assert {(branch.branch, branch.state) for branch in branches} == {
             ("MP3", BranchState.NOT_STARTED.value),
             ("MP4", BranchState.NOT_STARTED.value),
@@ -166,9 +164,7 @@ def test_claim_increments_owner_epoch_and_rejects_stale_owner(tmp_path: Path):
     assert claim.owner_epoch == 1
     assert claim.revision == 2
     with sessions() as session:
-        repository.require_current_owner(
-            session, run_id="r1", owner_id="worker-1", owner_epoch=1
-        )
+        repository.require_current_owner(session, run_id="r1", owner_id="worker-1", owner_epoch=1)
         with pytest.raises(StaleOwnershipError):
             repository.require_current_owner(
                 session, run_id="r1", owner_id="worker-old", owner_epoch=0
