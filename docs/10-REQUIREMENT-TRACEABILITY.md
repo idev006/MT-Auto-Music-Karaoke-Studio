@@ -8,7 +8,7 @@ This document makes the approval/test relationship explicit. State values: DOCUM
 | safe asset mapping | Preflight | 01, 06 | ambiguity and explicit single-image-role tests | VERIFIED (single-folder slice) |
 | MP3 cover without audio changes | ArtworkEngine | 01, 02, 12 | audio-payload hash/APIC readback | VERIFIED (fixture) |
 | continuous still-image MP4 | VideoEngine | 01, 02, 12 | full decode, probe and reference frame | VERIFIED (fixture) |
-| Thai lyric timing & review | Alignment/Review | 02, 05 | annotated benchmark | DOCUMENTED |
+| Thai lyric timing & review | Alignment/Review | 02, 05, 07, 12 | all-line ASR evidence checks, 12-frame sampling, annotated benchmark | IMPLEMENTED (QC review gate; KPI pending) |
 | karaoke display 14 property groups | Layout/Renderer | 05 | schema/visual tests | DOCUMENTED |
 | 8 x 5 presets | Creative/Renderer | 05 | version/preview parity | DOCUMENTED |
 | R-301 headless operational engine | Application | 02, 06, 12, ADR-0003 | real-media E2E plus state/ownership/recovery tests | IMPLEMENTED (direct single-folder slice) |

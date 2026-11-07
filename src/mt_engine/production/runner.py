@@ -15,6 +15,7 @@ from mutagen.mp3 import MP3
 from .intake import discover_song
 from .lyrics import extract_lyrics, propose_timing, transcribe
 from .media import embed_cover, run_ffmpeg_render, sha256_file, video_canvas, write_ass
+from .qc import build_alignment_checks, extract_qc_frames, select_frame_samples
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +156,17 @@ def produce_song(
     final_mp4 = target_dir / "karaoke.mp4"
     os.replace(staged_mp3, final_mp3)
     os.replace(staged_mp4, final_mp4)
+    alignment_checks = build_alignment_checks(timing, transcript)
+    frame_samples = select_frame_samples(alignment_checks, count=12)
+    frame_evidence = extract_qc_frames(
+        ffmpeg,
+        final_mp4,
+        frame_samples,
+        production_data / "qc_frames",
+    )
+    alignment_review_count = sum(
+        check.status == "REVIEW_REQUIRED" for check in alignment_checks
+    )
     qc_payload = {
         "schema_version": 1,
         "source_immutable": source_hash_before == source_hash_after,
@@ -168,6 +180,17 @@ def produce_song(
             "review_required": True,
             "accepted_for_test_only": True,
             "measured_alignment_kpi": False,
+        },
+        "karaoke_sampling_qc": {
+            "status": "REVIEW_REQUIRED",
+            "sample_count": len(frame_evidence),
+            "all_sampled_frames_have_subtitle_pixels": all(
+                bool(item["subtitle_pixels_present"]) for item in frame_evidence
+            ),
+            "exact_text_comparison": "HUMAN_REVIEW_REQUIRED_NO_THAI_OCR",
+            "alignment_lines_checked": len(alignment_checks),
+            "alignment_lines_requiring_review": alignment_review_count,
+            "samples": frame_evidence,
         },
     }
     qc_path = production_data / "qc_report.json"

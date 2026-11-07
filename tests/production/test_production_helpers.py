@@ -5,8 +5,9 @@ import pytest
 from PIL import Image
 
 from mt_engine.production.intake import IntakeError, discover_song
-from mt_engine.production.lyrics import TranscriptSegment, propose_timing
+from mt_engine.production.lyrics import TimedLine, TranscriptSegment, propose_timing
 from mt_engine.production.media import LANDSCAPE_CANVAS, PORTRAIT_CANVAS, video_canvas, write_ass
+from mt_engine.production.qc import build_alignment_checks, select_frame_samples
 
 
 def test_discovery_requires_explicit_single_image_dual_role(tmp_path: Path):
@@ -146,3 +147,36 @@ def test_ass_play_resolution_matches_portrait_canvas(tmp_path: Path):
     content = destination.read_text(encoding="utf-8-sig")
     assert "PlayResX: 1080" in content
     assert "PlayResY: 1920" in content
+
+
+def test_qc_flags_interpolated_line_without_asr_evidence_and_samples_it():
+    timing = (
+        propose_timing(("บรรทัดตรง",), (TranscriptSegment(10.0, 15.0, "บรรทัดตรง"),))[0],
+        propose_timing(("บรรทัดไม่มีหลักฐาน",), (TranscriptSegment(20.0, 25.0, "อื่น"),))[0],
+    )
+    transcript = (TranscriptSegment(10.0, 15.0, "บรรทัดตรง"),)
+
+    checks = build_alignment_checks(timing, transcript)
+    samples = select_frame_samples(checks, count=2)
+
+    assert checks[0].status == "PASS"
+    assert checks[1].status == "REVIEW_REQUIRED"
+    assert checks[1].has_overlapping_asr_evidence is False
+    assert checks[1] in samples
+
+
+def test_qc_selects_twelve_frames_and_prioritizes_low_confidence():
+    timing = tuple(
+        TimedLine(index * 5.0, index * 5.0 + 4.0, f"บรรทัด {index}")
+        for index in range(20)
+    )
+    transcript = tuple(
+        TranscriptSegment(line.start, line.end, line.text)
+        for line in timing
+        if line.text != "บรรทัด 9"
+    )
+
+    samples = select_frame_samples(build_alignment_checks(timing, transcript), count=12)
+
+    assert len(samples) == 12
+    assert any(sample.line_index == 9 for sample in samples)
