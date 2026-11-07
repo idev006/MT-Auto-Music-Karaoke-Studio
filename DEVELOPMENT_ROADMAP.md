@@ -1,31 +1,28 @@
-# Development roadmap
+# Development roadmap — evidence-driven milestones
 
-## Milestone 0 — Repository governance (this commit)
-- Architecture/requirements/KPIs, ADRs, contracts, project layout and basic deterministic PathManager tests.
-- Not a functioning karaoke renderer.
+Primary development runtime: **CPython 3.12.10 x64**. SQLite persistence requires **SQLAlchemy 2.x + Alembic**. All milestones require contract, tests and evidence before a VERIFIED label.
 
-## Milestone 1 — Headless foundation
-- SQLite migrations, job and event schemas, orchestration state machine, durable outbox, CLI, intake 1–N folders.
-- Automated tests: state transitions, restart/reconnect, paths, unicode, ambiguous assets, idempotency.
+## M0 — Project documentation & scaffold
+Architecture, requirements, KPIs, error recovery, module contracts, data model and Alembic design, UI/portable policy, traceability, initial PathManager and number-format unit tests.
+**Status: documentation and scaffold created**; actual migration engine/production features not yet implemented.
 
-## Milestone 2 — MP3 vertical slice
-- Mutagen cover embed on copied MP3, readback, audio-frame integrity verification, staging/publishing.
-- Test on representative MP3 metadata and corruption cases.
+## M1 — Headless operational foundation
+Define SQLAlchemy schema, create first explicit Alembic revision, upgrade fresh SQLite and previous fixture, startup revision check, file-backed SSOT, transactional outbox, state machine, durable workflow orchestrator, batch folder intake and CLI commands. Add automated state/migration/fault tests.
 
-## Milestone 3 — MP4 deterministic slice
-- Approved timing fixture -> ASS subtitles -> still-image FFmpeg MP4 -> media QC.
-- Reference frames and Thai typography parity tests, CPU/render benchmarks.
+## M2 — MP3 artwork vertical slice
+Asset validation -> copy MP3 -> Mutagen ID3/APIC -> verify audio frame integrity and preserved metadata -> stage/QC/publish. Test damaged files, ambiguous mapping and ID3 variants.
 
-## Milestone 4 — Thai alignment and review
-- Audio analysis and adapter experiments, lyrics parsing (TXT/DOCX), phrase/word alignment.
-- Build annotated benchmark first. Add confidence flags/manual override. Never claim 100% alignment without evidence.
+## M3 — Deterministic MP4 vertical slice
+Use pre-approved timing fixture and user-selected still image -> ASS subtitle -> FFmpeg H.264/AAC -> decode/duration/frame QC -> publish. Test Thai fonts and MP4 playback.
 
-## Milestone 5 — Preset library and batch hardening
-- Karaoke object schema (14 groups) and staged library (8 -> 24 -> 40), schema compatibility, resilience, retry, cache invalidation, fault injection.
+## M4 — Thai lyrics intelligence
+Build human-annotated baseline on actual Thai songs, analyze vocal alignment tools, compare MAE/P95, provide review/correction workflow, keep AI provider modular.
 
-## Milestone 6 — Windows PySide6 desktop and portable delivery
-- Qt signal/slot bridge, folder selector, job dashboard, timing review, preview and preset inspector.
-- Windows one-folder bundle including vetted FFmpeg/fonts; clean-PC and relocated-path acceptance.
+## M5 — Batch recovery, presets and media QA
+Karaoke display object (14 groups), presets staged 8 -> 24 -> 40, step invalidation/cache, error injection, cancel/pause/retry/resume, resource benchmarks.
 
-## Exit policy
-Each milestone requires contracts, tests, QA evidence and updated ADRs. Prefer vertical end-to-end proof over prematurely implementing all 48 planned capabilities.
+## M6 — Windows PySide6 & portable release
+Build signal/slot event bridge and desktop UI, progress dashboard, preset browser, timeline editor and preview. PyInstaller onedir with resources including Alembic migrations. Test relocated folder, fresh Windows without Python, Thai/English locale ASCII digits and 8 GB RAM performance.
+
+## Gate policy
+A passing test runner alone is insufficient; archive concrete evidence and trace requirements to tested behavior. All existing source media remains immutable. Scope creep outside MP3 cover + MP4 karaoke requires explicit decision.
