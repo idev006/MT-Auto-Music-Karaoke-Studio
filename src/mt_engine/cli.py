@@ -23,6 +23,9 @@ def _parser() -> argparse.ArgumentParser:
     produce.add_argument("--ffmpeg-preset", default="veryfast")
     produce.add_argument("--single-image-for-both", action="store_true")
     produce.add_argument("--accept-unreviewed-timing", action="store_true")
+    produce.add_argument(
+        "--openrouter-config", type=Path, default=Path("config/openrouter.env")
+    )
     return parser
 
 
@@ -42,6 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             single_image_for_both=args.single_image_for_both,
             accept_unreviewed_timing=args.accept_unreviewed_timing,
             ffmpeg_preset=args.ffmpeg_preset,
+            openrouter_config=args.openrouter_config,
         )
         print(
             json.dumps(

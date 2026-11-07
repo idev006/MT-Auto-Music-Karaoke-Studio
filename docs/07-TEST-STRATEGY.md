@@ -13,6 +13,8 @@ Tests begin before GUI implementation; run headless in CI and Windows local term
 | Karaoke sampling QC | check all lyric intervals against ASR evidence; extract 12 risk-prioritized and stratified MP4 frames; record expected text and subtitle-pixel evidence | every production run |
 
 Karaoke sampling QC is intentionally evidence-first. Without a Thai OCR adapter, pixel presence proves that text was rendered but does not prove the exact glyph content. Exact frame-text comparison therefore remains `HUMAN_REVIEW_REQUIRED`. Temporal synchronization fails closed to `REVIEW_REQUIRED` when a lyric interval has no overlapping ASR evidence or normalized text similarity is below 0.24.
+
+OpenRouter Vision QC is an optional external adapter. It is disabled by default and configured only through the Git-ignored `config/openrouter.env` or process environment. When enabled, each sampled frame and its expected lyric are sent to the configured vision model. Missing credentials, provider errors, non-JSON responses, or any mismatch must remain `REVIEW_REQUIRED`; they must never downgrade the local QC evidence or expose the API key.
 | Visual regression | Thai combining marks, multiple fonts, lyric safe area, preview-parity key frames | media release |
 | Lyrics benchmark | phrase MAE, word P95, repeated chorus, speech vs singing | offline benchmark |
 | Fault injection | worker kill, disk full, DB busy, event dupes, moved roots | nightly / release |

@@ -10,5 +10,6 @@ data/
 output/
 src_for_test/
 dest_for_test/
+config/openrouter.env
 *.partial
 *.log

@@ -15,6 +15,7 @@ from mutagen.mp3 import MP3
 from .intake import discover_song
 from .lyrics import extract_lyrics, propose_timing, transcribe
 from .media import embed_cover, run_ffmpeg_render, sha256_file, video_canvas, write_ass
+from .openrouter_vision import OpenRouterVisionConfig, inspect_samples
 from .qc import build_alignment_checks, extract_qc_frames, select_frame_samples
 
 
@@ -59,6 +60,7 @@ def produce_song(
     single_image_for_both: bool = False,
     accept_unreviewed_timing: bool = False,
     ffmpeg_preset: str = "veryfast",
+    openrouter_config: Path = Path("config/openrouter.env"),
 ) -> ProductionResult:
     assets = discover_song(source_dir, single_image_for_both=single_image_for_both)
     if not accept_unreviewed_timing:
@@ -164,6 +166,12 @@ def produce_song(
         frame_samples,
         production_data / "qc_frames",
     )
+    vision_config = OpenRouterVisionConfig.from_file(openrouter_config.resolve())
+    vision_qc = inspect_samples(
+        vision_config,
+        production_data / "qc_frames",
+        frame_evidence,
+    )
     alignment_review_count = sum(
         check.status == "REVIEW_REQUIRED" for check in alignment_checks
     )
@@ -191,6 +199,7 @@ def produce_song(
             "alignment_lines_checked": len(alignment_checks),
             "alignment_lines_requiring_review": alignment_review_count,
             "samples": frame_evidence,
+            "openrouter_vision_qc": vision_qc,
         },
     }
     qc_path = production_data / "qc_report.json"

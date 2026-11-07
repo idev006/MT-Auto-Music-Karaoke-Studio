@@ -42,3 +42,9 @@ Start with [Documentation Index](docs/README.md) for detailed links. Key entrypo
 Present: persistence and state foundations, fenced run repository, safe migrations, versioned engine contracts, a real single-folder headless CLI, ID3 cover embedding without MP3 audio re-encoding, faster-whisper transcription, ASS karaoke generation, and FFmpeg H.264/AAC rendering with decode/probe QC. The Thai fixture `เหงาเหลือเกิน` completed locally into the matching destination folder; see [E2E evidence](docs/12-E2E-MEDIA-EVIDENCE.md).
 
 This is a vertical slice, not a production release. The CLI currently runs the media path directly and is not yet connected to the SQLite coordinator/JobWorker/resource governor. Timing is an ASR-guided proposal requiring human review; no alignment KPI is claimed. Multi-folder scheduling, PySide6 UI, and portable EXE remain pending. CI status has not been independently verified.
+
+## Optional OpenRouter Vision QC
+
+OpenRouter can inspect the 10–15 sampled QC frames and compare visibly rendered Thai text with the expected lyric. This is opt-in because frames leave the local machine and provider usage may cost money. Copy `config/openrouter.env.example` to the Git-ignored `config/openrouter.env`, set `OPENROUTER_API_KEY`, and change `OPENROUTER_VISION_QC_ENABLED=true`. Never put the real key in the example file, source code, command line, logs, or Git.
+
+Vision QC verifies rendered text only; it does not replace the ASR/audio temporal-sync gate. The adapter requests provider data collection denial, fails closed to `REVIEW_REQUIRED`, and records model results without recording the API key.
