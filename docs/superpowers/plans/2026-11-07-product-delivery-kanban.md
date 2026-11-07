@@ -277,10 +277,10 @@ Phase gate requires launch without installed Python, no media work on the UI thr
 
 | Priority | Card | Depends on | Acceptance summary | Initial state |
 |---:|---|---|---|---|
-| 1 | M1-00 Boundary contracts | ADR-0003 | versioned DTO/import-boundary tests | Ready |
-| 2 | M1-01 Typed states/transitions | M1-00 | legal transitions, terminal run and aggregation tests | Ready |
-| 3 | M1-02 ADR-0003 migration/repositories | M1-00, M1-01 | one-owner fencing and atomic event tests | Backlog |
-| 4 | M1-03 Migration safety | persistence baseline | backup, preservation and recovery tests | Backlog |
+| 1 | M1-00 Boundary contracts | ADR-0003 | versioned DTO/import-boundary tests | Done |
+| 2 | M1-01 Typed states/transitions | M1-00 | legal transitions, terminal run and aggregation tests | Done |
+| 3 | M1-02 ADR-0003 migration/repositories | M1-00, M1-01 | one-owner fencing and atomic event tests | Ready |
+| 4 | M1-03 Migration safety | persistence baseline | backup, preservation and recovery tests | Ready |
 | 5 | M1-04 Error/whole-run retry | M1-01 | E01–E10 and new-run retry tests | Backlog |
 | 6 | M1-05 Coordinator/JobWorker/resources | M1-02, M1-04 | ownership, stale result, cancel race and heavy-token tests | Backlog |
 | 7 | M1-06 Multi-folder intake | M1-02, M1-04 | 1–N/ambiguity/Unicode tests | Backlog |
@@ -288,7 +288,7 @@ Phase gate requires launch without installed Python, no media work on the UI thr
 | 9 | M2-01 Media tool resolver | M1 gate | configured/bundled/PATH capability tests | Backlog |
 | 10 | M2-02 MP3/image preflight | M2-01 | damaged/ambiguous asset tests | Backlog |
 
-Only M1-00 and M1-01 may enter In Development initially, respecting the WIP limit of 2. M1-02 is replenished only after both contracts and state review; M1-03 may proceed when capacity opens.
+M1-00 and M1-01 passed local verification. M1-02 and M1-03 are the next Ready cards under WIP limit 2.
 
 ## 5. Metrics for process improvement
 

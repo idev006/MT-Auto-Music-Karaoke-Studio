@@ -35,4 +35,4 @@ Documentation baseline date: 2026-11-07. **Milestone 1 persistence slice is impl
 - All program-generated displayed numbers use Arabic/ASCII digits 0–9.
 
 ## Source status
-`src/mt_engine` currently contains an initial PathManager, number formatter and persistence adapter. The implemented initial schema predates ADR-0003; a follow-up migration is required before JobWorker implementation. Full repositories/coordinator, audio analysis, artwork generation, MP4 karaoke renderer and GUI are planned. Local tests are evidence only for their stated scope; no claim of passing remote CI or Windows portable acceptance is made.
+`src/mt_engine` currently contains PathManager, number formatter, v1 boundary contracts, typed state machines and the initial persistence adapter. The implemented initial schema predates ADR-0003; a follow-up migration is required before JobWorker implementation. Full repositories/coordinator, audio analysis, artwork generation, MP4 karaoke renderer and GUI are planned. Local tests are evidence only for their stated scope; no claim of passing remote CI or Windows portable acceptance is made.

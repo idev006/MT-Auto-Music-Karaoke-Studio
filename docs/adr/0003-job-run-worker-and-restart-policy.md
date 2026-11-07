@@ -54,7 +54,8 @@ MP3 and MP4 work remain logically independent inside a run. Their outcomes are p
 |---|---|---|
 | SUCCEEDED | SUCCEEDED | COMPLETED |
 | SUCCEEDED | FAILED | PARTIAL_SUCCESS |
-| SUCCEEDED | NEEDS_INPUT or NEEDS_REVIEW | PARTIAL_SUCCESS |
+| SUCCEEDED | NEEDS_INPUT | NEEDS_INPUT; verified MP3 remains visible |
+| SUCCEEDED | NEEDS_REVIEW | NEEDS_REVIEW; verified MP3 remains visible |
 | FAILED | any non-success | FAILED |
 | CANCELLED | CANCELLED or not started | CANCELLED |
 
