@@ -25,7 +25,7 @@ Documentation baseline date: 2026-11-07. **Milestone 1 persistence slice is impl
 
 ## Current decisions
 - Windows x64 primary development runtime Python 3.12.10 in a local virtual environment.
-- SQLite + SQLAlchemy 2.x + Alembic required. Initial operational schema revision `106a0b13ddd3` is implemented; backup/restore orchestration remains pending.
+- SQLite + SQLAlchemy 2.x + Alembic required. Revisions `106a0b13ddd3` and `b7f41c92a003` implement the operational/ADR-0003 foundation; backup/restore orchestration remains pending.
 - PySide6 portable app follows a headless Python engine; no Installer.exe.
 - Existing MP3 remains the audio source; embed cover only into a copy; separate MP4 with a user-provided still image and synchronized lyrics.
 - Multiple folders (1–N) with independent jobs and partial success behavior.
@@ -35,4 +35,4 @@ Documentation baseline date: 2026-11-07. **Milestone 1 persistence slice is impl
 - All program-generated displayed numbers use Arabic/ASCII digits 0–9.
 
 ## Source status
-`src/mt_engine` currently contains PathManager, number formatter, v1 boundary contracts, typed state machines and the initial persistence adapter. The implemented initial schema predates ADR-0003; a follow-up migration is required before JobWorker implementation. Full repositories/coordinator, audio analysis, artwork generation, MP4 karaoke renderer and GUI are planned. Local tests are evidence only for their stated scope; no claim of passing remote CI or Windows portable acceptance is made.
+`src/mt_engine` currently contains PathManager, number formatter, v1 boundary contracts, typed state machines and the ADR-0003 persistence/run-repository foundation. Full command repositories/coordinator, audio analysis, artwork generation, MP4 karaoke renderer and GUI are planned. Local tests are evidence only for their stated scope; no claim of passing remote CI or Windows portable acceptance is made.

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -47,8 +47,52 @@ class Job(TimestampMixin, Base):
     source_relpath: Mapped[str] = mapped_column(Text, nullable=False)
     state: Mapped[str] = mapped_column(String(32), nullable=False)
     revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    active_run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("job_runs.id", use_alter=True, name="fk_jobs_active_run_id"), nullable=True
+    )
     updated_at: Mapped[str] = mapped_column(String(32), nullable=False)
     __table_args__ = (UniqueConstraint("batch_id", "source_root_id", "source_relpath"),)
+
+
+class JobRun(TimestampMixin, Base):
+    __tablename__ = "job_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"))
+    run_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    owner_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    owner_epoch: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lease_expires_at_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    heartbeat_at_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    config_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    finished_at: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    __table_args__ = (
+        UniqueConstraint("job_id", "run_number"),
+        Index(
+            "uq_job_runs_one_active_per_job",
+            "job_id",
+            unique=True,
+            sqlite_where=text(
+                "state IN ('CREATED','QUEUED','RUNNING','NEEDS_INPUT','NEEDS_REVIEW',"
+                "'CANCEL_REQUESTED')"
+            ),
+        ),
+        Index("ix_job_runs_queue", "state", "created_at"),
+    )
+
+
+class JobRunBranch(Base):
+    __tablename__ = "job_run_branches"
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("job_runs.id", ondelete="CASCADE"), primary_key=True
+    )
+    branch: Mapped[str] = mapped_column(String(16), primary_key=True)
+    state: Mapped[str] = mapped_column(String(32), nullable=False)
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    updated_at: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 class Asset(TimestampMixin, Base):
@@ -139,6 +183,13 @@ class Artifact(TimestampMixin, Base):
     __tablename__ = "artifacts"
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"))
+    run_id: Mapped[str | None] = mapped_column(
+        ForeignKey("job_runs.id", ondelete="CASCADE"), nullable=True
+    )
+    operation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    owner_epoch: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    config_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     branch: Mapped[str] = mapped_column(String(16), nullable=False)
     root_id: Mapped[str] = mapped_column(String(64), nullable=False)
     relpath: Mapped[str] = mapped_column(Text, nullable=False)
@@ -160,6 +211,13 @@ class OutboxEvent(Base):
     emitted_at: Mapped[str] = mapped_column(String(32), nullable=False)
     delivered_at: Mapped[str | None] = mapped_column(String(32), nullable=True)
     __table_args__ = (Index("ix_outbox_events_pending", "delivered_at", "seq"),)
+
+
+class ConsumerCursor(Base):
+    __tablename__ = "consumer_cursors"
+    consumer_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    last_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 class WorkerLease(Base):
