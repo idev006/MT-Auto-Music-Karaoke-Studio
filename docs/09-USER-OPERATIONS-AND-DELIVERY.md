@@ -30,7 +30,7 @@ Names are examples only; input scanner must use content type, heuristics and exp
 - Every row shows independent MP3 and MP4 states.
 - Problems display message, code, cause, suggested corrective action, ability to retry.
 - Uncertain lyrics require human verification; revisions persist separately from display preset.
-- Resume only invalidated DAG steps after edits/restart.
+- Retry a failed/cancelled/interrupted song as a new run from intake. Version 1 does not resume individual DAG steps.
 
 ## Output structure
 ```text

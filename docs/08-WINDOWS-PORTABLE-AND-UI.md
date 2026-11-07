@@ -27,4 +27,4 @@ Executable, Python runtime, required Qt platform plugins, FFmpeg/FFprobe binarie
 No Setup.exe or registration to Program Files. User can delete portable folder to uninstall; if AppData mode selected, document external user data cleanup separately. Avoid writes inside read-only Program Files or OS-protected locations.
 
 ## Required clean-PC scenarios
-Move directory from D: to E:, Unicode folder name, no Python on target, FFmpeg loaded from package path, disk low, interrupted render resumed, SQLite schema upgrade, Windows locale Thai numerals, Qt font shaping and alignment.
+Move directory from D: to E:, Unicode folder name, no Python on target, FFmpeg loaded from package path, disk low, interrupted render marked truthfully and restarted as a new run, SQLite schema upgrade, Windows locale Thai numerals, Qt font shaping and alignment.

@@ -106,30 +106,29 @@ The engine accepts and advances many folder jobs concurrently. Concurrency is co
 | I/O | discovery, hashing, copy, manifest, publish | 4 | bounded threads |
 | Metadata | Pillow/Mutagen parsing and validation | 2 | bounded threads or processes |
 | Audio light | FFprobe, audio preparation | 2 | subprocess slots |
-| ASR heavy | faster-whisper, optional Demucs | 1 | isolated worker process |
-| Render heavy | FFmpeg final render | 1 | isolated subprocess tree |
-| Database writer | state/outbox/checkpoint commits | 1 coordinator | short transactions |
+| Heavy | faster-whisper, optional Demucs, FFmpeg final render | 1 shared token | isolated subprocess/process |
+| Database writer | state/outbox/run commits | 1 coordinator | short transactions |
 
-These are safe initial defaults, not fixed product limits. A resource profile may raise them after memory/CPU/disk benchmarks. Logical concurrency remains greater than one even when only one heavyweight step runs: while Job A renders, other jobs may scan, validate, prepare metadata or wait at review gates.
+These are conservative initial defaults, not measured safety claims or fixed product limits. A resource profile may raise them only after memory/CPU/disk benchmarks. Logical concurrency remains greater than one while the shared HEAVY token is occupied: other JobWorkers may scan, validate, prepare metadata or wait at review gates.
 
 Scheduler rules:
 
-- Persist every READY step before dispatch; workers never own authoritative state.
-- Lease work atomically with `worker_id`, `attempt_id`, heartbeat and expiration.
+- Persist every queued JobRun before admission; workers never own authoritative state.
+- Lease one active JobRun atomically to one logical JobWorker using owner epoch, heartbeat and expiration.
 - Use dependency-aware fair scheduling across jobs; one folder cannot monopolize all slots.
 - Enforce per-resource semaphores plus global memory/disk-pressure backpressure.
-- Use one staging directory per `job_id/step_id/attempt_id`; workers cannot share writable artifact paths.
-- Workers return typed `StepResult`; only the coordinator commits state and outbox events.
+- Use one staging directory per `job_id/run_id`; workers cannot share writable artifact paths.
+- Tool adapters return typed fenced results; only the JobWorker/command coordinator commits state and outbox events.
 - Treat execution as at-least-once; input fingerprints, artifact keys and unique constraints make results effectively idempotent.
-- Cancellation targets one job/attempt and its Windows subprocess tree without stopping other jobs.
+- Cancellation targets one JobRun and its Windows subprocess tree without stopping other jobs.
 - A failed folder affects only its job/branch. Other eligible folders continue, and verified outputs remain available.
-- On restart, expire stale leases, inspect staged artifacts and reschedule only incomplete or invalidated steps.
+- On restart, expire stale ownership, mark abandoned runs `INTERRUPTED` and require a new whole-run retry.
 
 Required parallel acceptance scenarios:
 
 - Process 1, 2, 5 and 10 folder jobs with deterministic fake workers and prove every job remains isolated.
 - Run simultaneous I/O/metadata steps while a heavyweight slot is occupied.
-- Prove ASR/render pool limits are never exceeded under load.
+- Prove the shared HEAVY token is never exceeded under load.
 - Kill one worker and recover its expired lease without duplicating another job's artifact.
 - Cancel one job while sibling jobs continue to completion.
 - Inject SQLite busy, disk pressure and duplicate/out-of-order results without false success or deadlock.
@@ -150,46 +149,52 @@ Exit gate:
 
 ### Phase 1 — Headless operational foundation
 
-**Outcome:** create, persist, execute, interrupt and resume independent jobs without media production.
+**Outcome:** create, persist, execute, interrupt and restart independent whole-song runs without media production.
 
 Ordered Kanban cards:
 
-1. **M1-01 Typed states and legal transitions**
-   - Create `src/mt_engine/domain/states.py` and `src/mt_engine/domain/transitions.py`.
-   - Test `tests/domain/test_transitions.py` for every legal edge, illegal edge and terminal-attempt rule.
-   - Accept when batch/job/step transition tables match `docs/02-PIPELINE-AND-STATE-MACHINE.md` exactly.
+1. **M1-00 Boundary contracts and architecture enforcement**
+   - Create versioned commands, snapshots, tool request/result, events, errors and artifact contracts without SQLAlchemy/PySide6/FFmpeg imports.
+   - Add import-boundary tests and JSON contract fixtures.
+   - Accept when adapters depend inward and the headless package imports without PySide6.
 
-2. **M1-02 Transactional repositories and optimistic revision**
+2. **M1-01 Typed states and legal transitions**
+   - Create `src/mt_engine/domain/states.py` and `src/mt_engine/domain/transitions.py`.
+   - Test `tests/domain/test_transitions.py` for every Batch/Job/JobRun/Branch/Artifact transition and aggregation truth row.
+   - Accept when terminal runs cannot reopen and Retry creates a new run.
+
+3. **M1-02 ADR-0003 schema migration and repositories**
+   - Add a reviewed Alembic revision for JobRun, branch outcomes, job ownership/epoch, artifact provenance and consumer cursors.
    - Create `src/mt_engine/adapters/persistence/repositories.py` and application-facing persistence protocols.
-   - Test stale revision, duplicate `request_id`, rollback, event uniqueness and two-job isolation.
+   - Test one-active-run/owner constraints, stale revision/epoch, duplicate request, rollback, event uniqueness and job isolation.
    - Accept when aggregate mutation and outbox event are committed or rolled back together.
 
-3. **M1-03 Migration safety lifecycle**
+4. **M1-03 Migration safety lifecycle**
    - Extend `src/mt_engine/adapters/persistence/migration.py` with SQLite backup API, disk preflight and restore-on-failure.
    - Test fresh upgrade, previous fixture preservation, unknown future revision and injected failure recovery.
    - Accept when worker startup is blocked until the schema is compatible and verified.
 
-4. **M1-04 Typed error contract and retry policy**
+5. **M1-04 Typed error contract and whole-run retry policy**
    - Create `src/mt_engine/domain/errors.py` and `src/mt_engine/application/retry.py`.
-   - Test E01–E10 serialization, severity/scope, retry eligibility, bounded attempts and backoff bounds.
+   - Test E01–E10 serialization, severity/scope, terminal-run behavior and new-run retry.
    - Accept when no public failure relies on a raw traceback as its user message.
 
-5. **M1-05 Durable orchestrator and leases**
-   - Create focused modules under `src/mt_engine/application/workflow/` for definitions, scheduler, coordinator and recovery.
-   - Test lease acquisition, heartbeat expiry, retry as a new attempt, cancellation, duplicate result, fair multi-job scheduling, resource-pool limits and restart reconciliation.
-   - Accept when at-least-once execution produces idempotent effective state.
+6. **M1-05 Batch Coordinator, JobWorker ownership and resource governor**
+   - Create focused modules for admission, one-owner JobWorker runtime, serialized mailbox, shared HEAVY token and restart reconciliation.
+   - Test ownership/heartbeat expiry, whole-run retry, cancel/complete race, stale result, fair multi-job scheduling and resource limits.
+   - Accept when one active owner per run is enforced and restart never resumes mid-run.
 
-6. **M1-06 Multi-folder intake and immutable manifests**
+7. **M1-06 Multi-folder intake and immutable manifests**
    - Create `src/mt_engine/intake/` modules for selection normalization, scanning, classification and validation.
    - Test 1/N folders, nested duplicates, Thai paths, missing folders, multiple MP3s, ambiguous images and output-tree exclusion.
    - Accept when ambiguity becomes `NEEDS_INPUT`; the engine never silently selects a conflicting role.
 
-7. **M1-07 Headless CLI**
+8. **M1-07 Headless CLI**
    - Create `src/mt_engine/cli.py` and declare the project script entry point in `pyproject.toml`.
-   - Provide commands for database status/upgrade, intake, batch status, start, cancel and resume.
+   - Provide commands for database status/upgrade, intake, batch status, start, cancel and whole-run retry.
    - Accept when a temporary workspace completes a fake-worker batch without importing PySide6.
 
-Phase gate: orchestrator crash/retry/cancel/resume/duplicate-event/job-isolation tests all pass; 1/2/5/10-folder parallel scenarios respect configured pool limits; database migration and source immutability gates pass; CLI drives the workflow end to end with fake adapters.
+Phase gate: ownership, crash/interruption, whole-run retry, cancel/complete, stale-result and job-isolation tests all pass; 1/2/5/10-folder scenarios respect configured limits and the shared HEAVY token; database migration and source immutability gates pass; CLI drives the workflow end to end with fake adapters.
 
 ### Phase 2 — MP3 artwork vertical slice
 
@@ -199,7 +204,7 @@ Ordered cards:
 
 1. **M2-01 Media tool and file-inspection ports** — resolve FFmpeg/FFprobe and capability versions; validate executable paths without shell strings.
 2. **M2-02 MP3 and artwork preflight** — Mutagen/Pillow adapters validate audio, image format, dimensions and mapping.
-3. **M2-03 Copy and APIC embedding** — write only to attempt staging; retain protected metadata under a versioned policy.
+3. **M2-03 Copy and APIC embedding** — write only to run staging; retain protected metadata under a versioned policy.
 4. **M2-04 Audio-frame integrity QC** — compare extracted MP3 audio-frame content independently from changed ID3 bytes and read APIC back.
 5. **M2-05 Safe publication** — collision policy, verified manifest, same-volume atomic rename and orphan reconciliation.
 
@@ -241,7 +246,7 @@ Benchmark evidence records phrase MAE, word P95, coverage, runtime and memory. P
 
 Ordered cards:
 
-1. Dependency fingerprinting and selective step invalidation.
+1. Input/config fingerprinting, whole-run freshness checks and optional cache research; no step resume in version 1.
 2. Bounded scheduling for 8 GB CPU-only systems.
 3. Full 14-group/84-property versioned KaraokeDisplayObject schema.
 4. Renderer capability validation and property inheritance.
@@ -272,18 +277,18 @@ Phase gate requires launch without installed Python, no media work on the UI thr
 
 | Priority | Card | Depends on | Acceptance summary | Initial state |
 |---:|---|---|---|---|
-| 1 | M1-01 Typed states/transitions | persistence baseline | exhaustive legal/illegal transition tests | Ready |
-| 2 | M1-02 Repositories/outbox | M1-01 | optimistic revision and atomic event tests | Backlog |
-| 3 | M1-03 Migration safety | persistence baseline | backup, preservation and recovery tests | Ready |
-| 4 | M1-04 Error/retry contracts | M1-01 | E01–E10 and bounded retry tests | Backlog |
-| 5 | M1-05 Orchestrator/leases | M1-02, M1-04 | crash/retry/cancel/idempotency tests | Backlog |
-| 6 | M1-06 Multi-folder intake | M1-02, M1-04 | 1–N/ambiguity/Unicode tests | Backlog |
-| 7 | M1-07 CLI | M1-05, M1-06 | fake-worker headless integration | Backlog |
-| 8 | M2-01 Media tool resolver | M1 gate | configured/bundled/PATH capability tests | Backlog |
-| 9 | M2-02 MP3/image preflight | M2-01 | damaged/ambiguous asset tests | Backlog |
-| 10 | M2-03 APIC embedding | M2-02 | metadata and staged-copy tests | Backlog |
+| 1 | M1-00 Boundary contracts | ADR-0003 | versioned DTO/import-boundary tests | Ready |
+| 2 | M1-01 Typed states/transitions | M1-00 | legal transitions, terminal run and aggregation tests | Ready |
+| 3 | M1-02 ADR-0003 migration/repositories | M1-00, M1-01 | one-owner fencing and atomic event tests | Backlog |
+| 4 | M1-03 Migration safety | persistence baseline | backup, preservation and recovery tests | Backlog |
+| 5 | M1-04 Error/whole-run retry | M1-01 | E01–E10 and new-run retry tests | Backlog |
+| 6 | M1-05 Coordinator/JobWorker/resources | M1-02, M1-04 | ownership, stale result, cancel race and heavy-token tests | Backlog |
+| 7 | M1-06 Multi-folder intake | M1-02, M1-04 | 1–N/ambiguity/Unicode tests | Backlog |
+| 8 | M1-07 CLI | M1-05, M1-06 | fake-worker headless integration | Backlog |
+| 9 | M2-01 Media tool resolver | M1 gate | configured/bundled/PATH capability tests | Backlog |
+| 10 | M2-02 MP3/image preflight | M2-01 | damaged/ambiguous asset tests | Backlog |
 
-Only M1-01 and M1-03 may enter In Development initially, respecting the WIP limit of 2. M1-02 is replenished after M1-01 review; M1-04 may proceed in parallel with M1-03 when capacity opens.
+Only M1-00 and M1-01 may enter In Development initially, respecting the WIP limit of 2. M1-02 is replenished only after both contracts and state review; M1-03 may proceed when capacity opens.
 
 ## 5. Metrics for process improvement
 
@@ -309,8 +314,8 @@ These metrics guide flow improvements; they are not product-quality evidence. Pr
 
 ## 7. Immediate execution sequence
 
-1. Pull **M1-01 Typed states and legal transitions** into In Development.
-2. Write its detailed test-first implementation plan with exact state enums and transition matrix from `docs/02-PIPELINE-AND-STATE-MACHINE.md`.
-3. In parallel capacity, pull **M1-03 Migration safety lifecycle** only after defining a recoverable backup/restore acceptance fixture.
-4. Review each diff independently; do not begin M1-05 until repository and error contracts are stable.
-5. Demonstrate the Phase 1 gate through the headless CLI before any PySide6 production screen begins.
+1. Pull **M1-00 Boundary contracts** and **M1-01 Typed states** under WIP limit 2.
+2. Implement exact state enums, transition/aggregation tables and versioned DTO fixtures from the approved SSOT.
+3. Design and review the ADR-0003 follow-up migration before implementing repositories.
+4. Review each diff independently; do not begin M1-05 until ownership fencing, repository and error contracts are stable.
+5. Demonstrate whole-run failure/retry and multi-folder isolation through the headless CLI before any PySide6 production screen begins.

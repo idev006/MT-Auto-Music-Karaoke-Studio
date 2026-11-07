@@ -7,7 +7,7 @@ Architecture, requirements, KPIs, error recovery, module contracts, data model a
 **Status: documentation and scaffold created**; actual migration engine/production features not yet implemented.
 
 ## M1 — Headless operational foundation
-Define SQLAlchemy schema, create first explicit Alembic revision, upgrade fresh SQLite and previous fixture, startup revision check, file-backed SSOT, transactional outbox, state machine, durable workflow orchestrator, batch folder intake and CLI commands. Add automated state/migration/fault tests.
+Freeze versioned boundary contracts and ADR-0003 state machines. Add the follow-up Alembic schema for immutable JobRuns, one-owner fencing, branch outcomes, artifact provenance and event cursors. Implement transactional repositories, Batch Coordinator, one logical JobWorker per active folder run, shared heavyweight resource governor, multi-folder intake and CLI commands. Failure/cancel/interruption is terminal for a run; Retry starts a new run from intake. Add automated ownership/race/migration/fault tests.
 
 ## M2 — MP3 artwork vertical slice
 Asset validation -> copy MP3 -> Mutagen ID3/APIC -> verify audio frame integrity and preserved metadata -> stage/QC/publish. Test damaged files, ambiguous mapping and ID3 variants.
@@ -19,7 +19,7 @@ Use pre-approved timing fixture and user-selected still image -> ASS subtitle ->
 Build human-annotated baseline on actual Thai songs, analyze vocal alignment tools, compare MAE/P95, provide review/correction workflow, keep AI provider modular.
 
 ## M5 — Batch recovery, presets and media QA
-Karaoke display object (14 groups), presets staged 8 -> 24 -> 40, step invalidation/cache, error injection, cancel/pause/retry/resume, resource benchmarks.
+Karaoke display object (14 groups), presets staged 8 -> 24 -> 40, optional cache based on measured need, error injection, cancel/pause/whole-run retry and resource benchmarks. Fine-grained resume requires a future ADR and is not part of version 1.
 
 ## M6 — Windows PySide6 & portable release
 Build signal/slot event bridge and desktop UI, progress dashboard, preset browser, timeline editor and preview. PyInstaller onedir with resources including Alembic migrations. Test relocated folder, fresh Windows without Python, Thai/English locale ASCII digits and 8 GB RAM performance.

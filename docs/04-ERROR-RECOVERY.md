@@ -14,21 +14,21 @@ All public failures return: code, category, message_for_user, technical_details 
 | E06 Rendering | FFmpeg nonzero, unsupported feature, corrupt output | diagnostics, no publish |
 | E07 Resources | disk full, RAM threshold, process quota | stop scheduling, wait remediation |
 | E08 Persistence | DB busy/constraint/migration mismatch | bounded retry or block startup |
-| E09 Runtime | crash, power interruption, cancelled process | lease recovery/checkpoint |
+| E09 Runtime | crash, power interruption, cancelled process | interrupt run, release ownership, start a new run on retry |
 | E10 Integration | missed event, moved paths, Qt bridge reconnect | rebind and snapshot reconcile |
 
 ## Retry rules
-Only transient and explicitly classified failures auto-retry. Default max 3 attempts with exponential backoff and jitter; permanent failures require corrected inputs/config. No infinite retries. Every retry is recorded as a distinct attempt and cannot erase history.
+Version 1 uses whole-run restart. A failed/cancelled/interrupted JobRun is terminal; Retry creates a new run, workspace, owner epoch and input/config snapshot and starts again at intake. A tool adapter may perform a small bounded retry inside the current operation only for an explicitly transient failure with no externally visible side effect. No infinite retries and no reopening terminal history.
 
 ## Crash consistency
 - Step output uses isolated staging path with an attempt ID.
 - Check file decode/hash and record verified artifact before final output publish.
 - Publisher uses same-volume temporary file + atomic rename; after reboot scan for orphan .partial files and reconcile against artifact manifests.
-- On app startup expire stale leases, compare cached fingerprints, mark steps READY/NEEDS_REVIEW rather than assuming success.
+- On app startup expire ownership leases and mark abandoned non-terminal runs `INTERRUPTED`; never infer success from staging. A new run is required to retry.
 - If MP3 branch succeeds and MP4 is blocked, preserve and expose verified MP3 with PARTIAL_SUCCESS.
 
 ## Cancellation
-Stop scheduling new work -> request worker graceful exit -> kill Windows subprocess tree if timeout -> clean staging or mark orphan safely -> commit CANCELLED event. Never delete verified prior published artifacts without explicit command.
+Stop admitting new work -> commit `CANCEL_REQUESTED` with optimistic revision -> request worker graceful exit -> kill Windows subprocess tree if timeout -> quarantine staging or mark orphan safely -> commit `CANCELLED`. A delayed result from the old run/owner epoch is rejected. Never delete verified prior published artifacts without explicit command.
 
 ## Disk safety
 Estimate free space before render and before DB migrations; reserve margin; monitor ongoing disk capacity. Disk-full is *not* solved by rapid repeated retry. User must choose another workspace or free space.

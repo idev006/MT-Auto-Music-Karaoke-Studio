@@ -26,7 +26,7 @@ A job is COMPLETED only if both required branches passed; otherwise PARTIAL_SUCC
 P00 select folders -> P01 scan/classify -> P02 preflight/manifest -> split:
 A: stage MP3 -> prepare cover -> ID3/APIC -> compare audio frame hashes -> publish.
 B: prepare audio and lyrics -> align phrases/words -> review timing -> resolve visual preset -> generate ASS -> MP4 render -> QC -> publish.
-Aggregate branch outcomes -> report. Resuming after interruption runs only invalidated steps.
+Aggregate branch outcomes -> report. An interrupted/failed/cancelled run is terminal; Retry creates a new run and restarts the song from intake. Version 1 does not resume individual steps.
 
 ## User workflows
 - Import explicit 1–N folders or select a parent directory (immediate child folders become jobs).

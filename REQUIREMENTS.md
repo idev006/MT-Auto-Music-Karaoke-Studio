@@ -30,11 +30,14 @@
 - R-305: Central PathManager; no hard-coded install paths; root-relative locators.
 - R-306: All program-generated displayed numerals ASCII 0–9 regardless of OS locale; preserve original lyric text in SSOT.
 - R-307: Tests at unit, contract, integration, end-to-end, media and Windows portability levels.
+- R-308: One folder is one Job. Each execution is an immutable-history JobRun with at most one active logical JobWorker owner; retry starts a new run from intake.
+- R-309: Multiple Jobs may progress concurrently under bounded resource admission. The 8 GB baseline permits only one shared heavyweight operation across faster-whisper, Demucs and final FFmpeg render until benchmarks approve another profile.
+- R-310: Runtime progress may be held in memory and per-run diagnostic logs, but operational state, ownership, branch outcomes and published artifacts remain in SQLite. No generated state/log is written into source folders.
 
 ## Error contract
 - E01 Input; E02 Asset; E03 Metadata; E04 Lyrics; E05 Alignment; E06 Renderer; E07 Resource; E08 Persistence; E09 Runtime; E10 Integration.
 - All errors carry code, severity, scope, retryability, correlation id, user-facing message and suggested action.
-- Retry transient faults with bounded exponential backoff; no endless retries; missing assets/ambiguous mapping require input.
+- A tool adapter may retry a proven transient, side-effect-free operation within a small bound. Failed/cancelled/interrupted runs are terminal; Job retry creates a new whole run. Missing assets/ambiguous mapping require input.
 - Stage artifacts and publish only after successful media checks; preserve originals; recover stale worker leases on restart.
 
 ## Acceptance

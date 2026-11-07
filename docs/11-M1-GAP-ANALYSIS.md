@@ -11,9 +11,10 @@ Evidence date: 2026-11-07. Scope: local repository at the current working tree. 
 | Startup schema compatibility | VERIFIED | Unmigrated, stale and unknown/future revisions fail closed through the migration adapter; future-revision test is present. |
 | Transactional outbox schema | VERIFIED (schema/transaction boundary) | Unique event IDs, pending-event index and state+event rollback test. Dispatcher/delivery cursor is not implemented. |
 | Migration backup and recovery | NOT IMPLEMENTED | Requires SQLite backup API, disk preflight, restore and failure-injection tests. |
-| Operational repositories | NOT IMPLEMENTED | Optimistic concurrency, idempotent request handling and query projections are next. |
-| Batch/job/step state machines | NOT IMPLEMENTED | States are documented and persisted as strings but legal transition logic is absent. |
-| Durable workflow orchestrator | NOT IMPLEMENTED | Leasing, retry, checkpoint, cancel/resume and crash recovery are absent. |
+| ADR-0003 follow-up schema | NOT IMPLEMENTED | Initial revision predates JobRun, branch outcome, job ownership/epoch, consumer cursor and full artifact provenance requirements. |
+| Operational repositories | NOT IMPLEMENTED | Optimistic concurrency, idempotent request handling, one-owner fencing and query projections are next. |
+| Batch/Job/JobRun/Branch state machines | NOT IMPLEMENTED | Approved states and aggregation truth are documented; legal transition code is absent. |
+| Batch Coordinator and JobWorker | NOT IMPLEMENTED | One-owner whole-run execution, shared HEAVY token, cancel race and stale-result rejection are absent. |
 | Multi-folder asset intake | NOT IMPLEMENTED | Discovery, classification and ambiguity contracts have no implementation. |
 | Headless CLI | NOT IMPLEMENTED | No command entry point exists. |
 | Remote CI | DOCUMENTED, NOT VERIFIED | Workflow exists; this local run does not establish GitHub Actions status. |
@@ -27,4 +28,4 @@ Evidence date: 2026-11-07. Scope: local repository at the current working tree. 
 
 ## Next dependency-ordered slice
 
-Implement typed batch/job/step states and repository commands that update an aggregate with an optimistic revision check while appending an outbox event in the same transaction. Then add duplicate request, illegal transition, stale revision and job-isolation tests before introducing the orchestrator scheduler.
+Implement M1-00 versioned boundary contracts and typed Batch/Job/JobRun/Branch/Artifact states. Then add the ADR-0003 follow-up migration and repository commands with optimistic revision/owner fencing plus atomic outbox insertion before implementing the Batch Coordinator and JobWorker.

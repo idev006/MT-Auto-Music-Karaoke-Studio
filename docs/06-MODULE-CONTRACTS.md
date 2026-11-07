@@ -22,7 +22,8 @@ Only application/orchestrator coordinates modules. Domain code imports no Qt, FF
 | PathManager | runtime and logical root IDs | validated filesystem Paths | root missing/traversal |
 | Persistence | commands, expected revision | snapshots + atomic outbox insert | revision conflict/DB busy |
 | EventGateway | durable events, consumer cursor | UI updates/snapshots | disconnect/replay |
-| Orchestrator | DAG/step result/state | state transitions and next steps | illegal transition |
+| BatchCoordinator | queued Jobs, resource profile | admitted fenced JobRuns | no capacity/ownership conflict |
+| JobWorker | JobRun snapshot, serialized messages | branch outcomes, typed tool requests/results | stale ownership/run failure |
 
 ## Example protocol style (illustrative, not implemented)
 ```python
@@ -37,11 +38,11 @@ class VideoRenderPort(Protocol):
 
 ## Versioned DTO minimums
 - `JobManifest`: id, schema_version, asset refs+hashes, immutable config revision, branch states.
-- `StepRequest`: job_id, step_id, attempt_id, input_hash, config_snapshot, deadline.
-- `StepResult`: status, verified staging refs, metrics, typed error, tool_versions.
+- `ToolRequest`: job_id, run_id, owner_epoch, operation_id, input_hash, config_snapshot, deadline.
+- `ToolResult`: job_id, run_id, owner_epoch, operation_id, status, staging refs, metrics, typed error, tool_versions.
 - `DomainEvent`: event_id, monotonic sequence, schema_version, event_type, UTC time, correlation ID, payload.
 - `LyricsTimeline`: lyrics_revision, model, phrase_occurrence IDs, segments and tokens with rational/decimal time; approval.
-- `ArtifactManifest`: output root ID, relative locator, hash, codec metadata, QC evidence, source hashes.
+- `ArtifactManifest`: job/run/operation identity, owner epoch, output root ID, relative locator, hash, codec metadata, QC evidence, source/config hashes.
 - `ErrorRecord`: error code and classified remediation.
 - `PresetDescriptor`: id/version/schema_version, inherited settings, required capabilities.
 
@@ -53,3 +54,6 @@ class VideoRenderPort(Protocol):
 5. Filename/paths use validated root-relative references; no arbitrary raw shell command strings.
 6. Timing SSOT cannot be overwritten by visual overrides; edits create new revisions.
 7. Program-generated displayed digits use ASCII 0–9; source bytes preserved.
+8. UI, tools and adapters never mutate aggregate state directly; commands pass expected revision.
+9. faster-whisper emits `TranscriptCandidate` evidence. Only Alignment emits `TimelineCandidate`; approval creates an immutable TimingRevision.
+10. ASS generation escapes untrusted text and media execution uses argument arrays, never shell command strings.

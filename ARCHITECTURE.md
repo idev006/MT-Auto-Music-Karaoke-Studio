@@ -9,9 +9,9 @@ PySide6 desktop (future) | CLI (future) | optional API
                     |
        Commands / Queries / Event Gateway
                     |
-   Orchestrator: DAG, Job Queue, Scheduler, Recovery
+ Batch Coordinator: admission, ownership, resources
                     |
-          1–N independent Song Jobs
+ 1–N JobWorkers (one owner per active Folder Run)
              /               \
    MP3 cover branch       MP4 karaoke branch
    copy -> APIC -> QC     lyrics/audio -> align -> approve -> ASS -> FFmpeg -> QC
@@ -36,11 +36,11 @@ Domain models cannot import PySide6, FFmpeg, SQLAlchemy or cloud providers. The 
 ## SQLite migration mandate
 All persistent schema changes must be implemented as **Alembic revisions**, driven by SQLAlchemy 2.x models. No production use of `metadata.create_all()` as a migration mechanism. Pre-migration backup, revision compatibility checks, WAL/foreign-key integrity and migration failure recovery are mandatory. See [Database design](docs/03-DATABASE-SSOT-ALEMBIC.md).
 
-## State and events
-Step state machine is explicit, job branches tracked independently, with PARTIAL_SUCCESS possible. State update and outbox event insert occur in one transaction. Consumers deduplicate event_id, use sequence, and reconcile from SSOT after reconnect. Cross-filesystem/DB publish consistency requires reconciliation rather than fake atomicity.
+## State, ownership and events
+One folder is one Job; every execution is an immutable-history JobRun. At most one logical JobWorker owns an active run and serializes its state-changing messages. Retry creates a new run and restarts from intake; version 1 deliberately has no durable per-step resume. MP3/MP4 branch outcomes remain independent, with PARTIAL_SUCCESS possible. State update and outbox insertion occur in one transaction. Consumers deduplicate event IDs, use sequence/cursors and reconcile from SSOT after reconnect. Cross-filesystem/DB publication uses fenced verification and reconciliation rather than fake atomicity. See ADR-0003 and the end-to-end sequences.
 
 ## Runtime and deployment
-Development: CPython **3.12.10 x64**. Windows 11 CPU-only 8 GB baseline, heavyweight subprocess isolation, conservative concurrency. Future PySide6 desktop; PyInstaller onedir packaging, no installer. Arabic digits ASCII 0–9 explicitly formatted in UI regardless of Windows locale.
+Development: CPython **3.12.10 x64**. Windows 11 CPU-only 8 GB baseline, heavyweight subprocess isolation and conservative concurrency. Multiple JobWorkers may advance independent folders, but faster-whisper, Demucs and final FFmpeg render share one global HEAVY token until measured benchmarks justify another profile. Future PySide6 desktop; PyInstaller onedir packaging, no installer. Arabic digits ASCII 0–9 explicitly formatted in UI regardless of Windows locale.
 
 ## Detailed specifications
 See [Docs Index](docs/README.md), [Pipeline](docs/02-PIPELINE-AND-STATE-MACHINE.md), [Module Contracts](docs/06-MODULE-CONTRACTS.md), [Error Handling](docs/04-ERROR-RECOVERY.md), [Test Plan](docs/07-TEST-STRATEGY.md).
