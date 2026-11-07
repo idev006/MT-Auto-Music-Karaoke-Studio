@@ -20,6 +20,7 @@ Documentation baseline date: 2026-11-07. **Milestone 1 persistence slice is impl
 15. [ADR-0001](adr/0001-foundation.md) and [ADR-0002](adr/0002-python-sqlite-alembic.md) — architecture decisions.
 16. [Contract Registry](contracts/README.md) — planned versioned contracts.
 17. [M1 Gap Analysis](11-M1-GAP-ANALYSIS.md) — evidence-backed implementation status and next dependency.
+18. [Agile/Kanban Product Delivery Plan](superpowers/plans/2026-11-07-product-delivery-kanban.md) — phased execution, WIP policy and acceptance gates.
 
 ## Current decisions
 - Windows x64 primary development runtime Python 3.12.10 in a local virtual environment.
