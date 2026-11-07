@@ -12,7 +12,7 @@ This document makes the approval/test relationship explicit. State values: DOCUM
 | karaoke display 14 property groups | Layout/Renderer | 05 | schema/visual tests | DOCUMENTED |
 | 8 x 5 presets | Creative/Renderer | 05 | version/preview parity | DOCUMENTED |
 | durable orchestrator | Application | 02, 06 | recovery/state tests | DOCUMENTED |
-| SQLite via SQLAlchemy/Alembic | Persistence | 03 | migration upgrade tests | DOCUMENTED |
+| SQLite via SQLAlchemy/Alembic | Persistence | 03 | fresh migration, FK, rollback, incompatible revision tests | VERIFIED (initial schema slice) |
 | fault isolation / resume | Recovery | 04 | injection scenarios | DOCUMENTED |
 | path-independent portable | PathManager | 08 | relocated root / clean PC | SCAFFOLDED |
 | numeral ASCII 0–9 | Formatting boundary | 08 | unicode-digit tests | SCAFFOLDED |

@@ -1,6 +1,6 @@
 # MT Auto Music & Karaoke Studio
 
-**Project foundation baseline v0.1.0 | Documentation complete for initial implementation planning; engine features not finished.**
+**Project foundation baseline v0.1.0 | Milestone 1 persistence slice implemented; engine features not finished.**
 
 This project is a local-first, portable Windows application with a Python headless production engine. Each of **1–N user-selected song directories** provides an existing MP3, optional cover/background images and optional TXT/DOCX lyrics. The engine will **embed a cover image into a copy of the existing MP3 without audio re-encoding** and create an **MP4 with the user-selected still image shown throughout the song plus synchronized Thai karaoke text**. No music generation is included.
 
@@ -23,7 +23,7 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 python -m pytest -v
 ```
-On an existing clone, `git pull --ff-only origin main` and check `dir pyproject.toml`. Do not delete uncommitted files. A clean development install pulls SQLAlchemy and Alembic as project dependencies. **Migration scripts are specified but not implemented yet; do not run `alembic upgrade head` until migrations are added.**
+On an existing clone, `git pull --ff-only origin main` and check `dir pyproject.toml`. Do not delete uncommitted files. A clean development install pulls SQLAlchemy and Alembic as project dependencies. The initial reviewed migration is bundled and is exercised through the programmatic persistence migration API and automated tests.
 
 ## Documentation index
 Start with [Documentation Index](docs/README.md) for detailed links. Key entrypoints:
@@ -37,4 +37,4 @@ Start with [Documentation Index](docs/README.md) for detailed links. Key entrypo
 - [Windows portable / UI](docs/08-WINDOWS-PORTABLE-AND-UI.md)
 
 ## Current implementation status
-Present: repository governance docs, Python package foundation, PathManager prototype, Arabic numeral display helper, basic tests and a Windows GitHub Actions workflow. Not yet present: persistent SQLite models/migrations, orchestrator implementation, cover embedding, alignment, karaoke video renderer, PySide6 UI, runnable portable EXE. CI passing status has not been independently verified. See [Traceability Matrix](docs/10-REQUIREMENT-TRACEABILITY.md).
+Present: repository governance docs, Python package foundation, PathManager prototype, Arabic numeral display helper, SQLAlchemy operational models, initial Alembic revision, migration compatibility guard, basic tests and a Windows GitHub Actions workflow. Not yet present: operational repositories, state-machine/orchestrator implementation, cover embedding, alignment, karaoke video renderer, PySide6 UI, runnable portable EXE. CI passing status has not been independently verified. See [Traceability Matrix](docs/10-REQUIREMENT-TRACEABILITY.md) and [M1 Gap Analysis](docs/11-M1-GAP-ANALYSIS.md).

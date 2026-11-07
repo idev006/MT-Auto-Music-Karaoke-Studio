@@ -1,6 +1,6 @@
 # MT Auto Music & Karaoke Studio — Documentation Index
 
-Documentation baseline date: 2026-11-07. **Documentation-complete for initial implementation planning, not implementation-complete.**
+Documentation baseline date: 2026-11-07. **Milestone 1 persistence slice is implemented and locally verified; the product is not implementation-complete.**
 
 ## Read in this order
 1. [Project Charter](../PROJECT_CHARTER.md) — goals, scope and non-goals.
@@ -19,10 +19,11 @@ Documentation baseline date: 2026-11-07. **Documentation-complete for initial im
 14. [Development Roadmap](../DEVELOPMENT_ROADMAP.md) — milestones M0–M6.
 15. [ADR-0001](adr/0001-foundation.md) and [ADR-0002](adr/0002-python-sqlite-alembic.md) — architecture decisions.
 16. [Contract Registry](contracts/README.md) — planned versioned contracts.
+17. [M1 Gap Analysis](11-M1-GAP-ANALYSIS.md) — evidence-backed implementation status and next dependency.
 
 ## Current decisions
 - Windows x64 primary development runtime Python 3.12.10 in a local virtual environment.
-- SQLite + SQLAlchemy 2.x + Alembic required. Migration scripts have not yet been implemented.
+- SQLite + SQLAlchemy 2.x + Alembic required. Initial operational schema revision `106a0b13ddd3` is implemented; backup/restore orchestration remains pending.
 - PySide6 portable app follows a headless Python engine; no Installer.exe.
 - Existing MP3 remains the audio source; embed cover only into a copy; separate MP4 with a user-provided still image and synchronized lyrics.
 - Multiple folders (1–N) with independent jobs and partial success behavior.
@@ -30,4 +31,4 @@ Documentation baseline date: 2026-11-07. **Documentation-complete for initial im
 - All program-generated displayed numbers use Arabic/ASCII digits 0–9.
 
 ## Source status
-`src/mt_engine` currently contains an initial PathManager and number formatter only. Database migrations, full orchestrator, audio analysis, artwork generation, MP4 karaoke renderer and GUI are planned. No claim of passing CI or Windows portable acceptance is made until evidence is recorded.
+`src/mt_engine` currently contains an initial PathManager, number formatter and persistence adapter. Full operational repositories/orchestrator, audio analysis, artwork generation, MP4 karaoke renderer and GUI are planned. Local tests are evidence only for their stated scope; no claim of passing remote CI or Windows portable acceptance is made.

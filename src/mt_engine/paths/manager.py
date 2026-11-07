@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import os
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -23,7 +23,7 @@ class PathManager:
         executable: Path | None = None,
         frozen: bool | None = None,
         local_appdata: Path | None = None,
-    ) -> "PathManager":
+    ) -> PathManager:
         is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else frozen
         if is_frozen:
             root = (executable or Path(sys.executable)).resolve().parent

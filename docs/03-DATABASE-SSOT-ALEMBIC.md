@@ -8,7 +8,7 @@
 - Versioned project schemas/configuration/presets live in Git; deployed presets are versioned immutable bundles.
 - GUI is a projection; never independently mutates operational state.
 
-## Initial normalized relational schema (proposed)
+## Initial normalized relational schema
 | Table | Key / notable columns | Invariant |
 |---|---|---|
 | projects | id, name, created_at | project ownership |
@@ -61,4 +61,4 @@ The migration configuration resolves the database path through PathManager/runti
 ## Required tests
 Upgrade empty DB, upgrade previous release, verify tables/indexes/FKs and revision head, reject incompatible future revision, preserve sample job records across migration, rollback from interrupted/corrupt update, and test moved portable application DB.
 
-This file defines the migration design; Alembic runtime/configuration and actual migrations remain to be implemented.
+Alembic runtime/configuration, SQLAlchemy models and initial revision `106a0b13ddd3` are implemented. Fresh upgrade, table/FK inspection, atomic rollback and incompatible-revision rejection have local automated tests. Pre-migration SQLite backup/restore, previous-release fixture upgrade and injected migration-failure recovery remain to be implemented.
