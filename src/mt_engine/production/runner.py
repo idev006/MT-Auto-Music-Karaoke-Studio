@@ -104,6 +104,7 @@ def produce_song(
     lyric_lines = extract_lyrics(assets.mp3)
     transcript, transcription_info = transcribe(
         assets.mp3,
+        canonical_lyrics=lyric_lines,
         model_name=model_name,
         model_cache=dest_root.resolve() / ".models" / "faster-whisper",
         cpu_threads=cpu_threads,
@@ -136,7 +137,7 @@ def produce_song(
         "method": (
             "whole-song proportional fallback after insufficient faster-whisper coverage"
             if full_song_fallback_used
-            else "faster-whisper ASR-guided proportional line timing"
+            else "monotonic canonical-lyrics alignment to faster-whisper segments"
         ),
         "full_song_fallback_used": full_song_fallback_used,
         "asr_window_duration_seconds": asr_window_duration,

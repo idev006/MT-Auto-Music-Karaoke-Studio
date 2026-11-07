@@ -6,7 +6,7 @@ Evidence date: 2026-11-07. Environment: Windows, CPython 3.12 x64, local FFmpeg 
 
 - Source folder: `src_for_test/เหงาเหลือเกิน`
 - Destination folder: `dest_for_test/เหงาเหลือเกิน`
-- Run: `e1702c3547074b76a281ff3ce3b43d0d`
+- Run: `194c1f4277d04070b1be750bdcaef91d`
 - Output MP3: `song_with_cover.mp3`
 - Output MP4: `karaoke.mp4`
 - Production evidence: `production_data/manifest.json`, `qc_report.json`, `timing.json`, `karaoke.ass`
@@ -28,4 +28,4 @@ The single portrait image was explicitly authorized for both cover and video bac
 
 ## Honest limitation
 
-Lyrics were read from embedded ID3 text. Faster-whisper `base` detected only a short 16.68-second island in this 272.43-second song. The timing engine rejected that window as insufficient coverage and used a conservative whole-song proportional fallback, preventing all 46 lines from being compressed into the island. The run still records `SUCCEEDED_WITH_TEST_TIMING_OVERRIDE`, `review_required=true`, and `measured_alignment_kpi=false`. This output demonstrates executable E2E plumbing and continuously visible lyric events, not production-grade lyric synchronization.
+Lyrics were read from embedded ID3 text. The earlier VAD-enabled pass detected only a short island and could not synchronize the song. The current pass disables VAD, supplies canonical lyrics as the decoding prompt, and produces ASR segments spanning 241.64 seconds of the 272.43-second song. A monotonic fuzzy aligner anchors canonical groups of one to three lines to those timestamps and interpolates only unrecognized gaps; automated checks require all 46 events to remain ordered and non-overlapping. The run still records `SUCCEEDED_WITH_TEST_TIMING_OVERRIDE`, `review_required=true`, and `measured_alignment_kpi=false`: segment-level synchronization is materially improved, but word-level alignment has not yet been benchmarked or human-approved.

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass
+from difflib import SequenceMatcher
+from itertools import pairwise
 from pathlib import Path
 
 from faster_whisper import WhisperModel
@@ -41,6 +44,7 @@ def extract_lyrics(mp3_path: Path) -> tuple[str, ...]:
 def transcribe(
     audio_path: Path,
     *,
+    canonical_lyrics: tuple[str, ...],
     model_name: str,
     model_cache: Path,
     cpu_threads: int,
@@ -57,9 +61,10 @@ def transcribe(
         str(audio_path),
         language="th",
         beam_size=5,
-        vad_filter=True,
+        vad_filter=False,
         word_timestamps=True,
-        condition_on_previous_text=True,
+        condition_on_previous_text=False,
+        initial_prompt=" ".join(canonical_lyrics)[:1000],
     )
     materialized = tuple(
         TranscriptSegment(float(segment.start), float(segment.end), segment.text.strip())
@@ -96,7 +101,22 @@ def propose_timing(
         edge_padding = min(10.0, audio_duration * 0.05)
         start = edge_padding
         end = max(start + 0.1, audio_duration - edge_padding)
-    weights = [max(1, len("".join(line.split()))) for line in lyrics]
+    if not (audio_duration and observed_duration < audio_duration * 0.35):
+        aligned = _text_aligned_timing(lyrics, transcript)
+        if aligned is not None:
+            return aligned
+    return _proportional_timing(lyrics, start, end)
+
+
+def _normalize(text: str) -> str:
+    normalized = unicodedata.normalize("NFKC", text).casefold()
+    return "".join(character for character in normalized if character.isalnum())
+
+
+def _proportional_timing(
+    lyrics: tuple[str, ...], start: float, end: float
+) -> tuple[TimedLine, ...]:
+    weights = [max(1, len(_normalize(line))) for line in lyrics]
     total_weight = sum(weights)
     duration = end - start
     cursor = start
@@ -106,3 +126,77 @@ def propose_timing(
         timed.append(TimedLine(cursor, max(cursor + 0.1, line_end), line))
         cursor = line_end
     return tuple(timed)
+
+
+def _text_aligned_timing(
+    lyrics: tuple[str, ...], transcript: tuple[TranscriptSegment, ...]
+) -> tuple[TimedLine, ...] | None:
+    """Anchor canonical lines to monotonic ASR segments, then fill only gaps."""
+    anchors: dict[int, tuple[float, float]] = {}
+    cursor = 0
+    for segment in transcript:
+        segment_text = _normalize(segment.text)
+        if not segment_text or cursor >= len(lyrics):
+            continue
+        best: tuple[float, int, int] | None = None
+        for start_index in range(cursor, len(lyrics)):
+            for group_size in range(1, min(3, len(lyrics) - start_index) + 1):
+                candidate = _normalize("".join(lyrics[start_index : start_index + group_size]))
+                similarity = SequenceMatcher(None, candidate, segment_text, autojunk=False).ratio()
+                score = similarity - (start_index - cursor) * 0.008
+                if best is None or score > best[0]:
+                    best = (score, start_index, group_size)
+        if best is None or best[0] < 0.24:
+            continue
+        _, start_index, group_size = best
+        group = lyrics[start_index : start_index + group_size]
+        weights = [max(1, len(_normalize(line))) for line in group]
+        total = sum(weights)
+        position = segment.start
+        for offset, weight in enumerate(weights):
+            line_end = (
+                segment.end
+                if offset == group_size - 1
+                else position + (segment.end - segment.start) * weight / total
+            )
+            anchors[start_index + offset] = (position, line_end)
+            position = line_end
+        cursor = start_index + group_size
+
+    if len(anchors) < max(2, len(lyrics) // 5):
+        return None
+
+    timings: list[TimedLine | None] = [None] * len(lyrics)
+    for index, (start, end) in anchors.items():
+        timings[index] = TimedLine(start, max(start + 0.1, end), lyrics[index])
+
+    anchor_indices = sorted(anchors)
+    boundaries = [-1, *anchor_indices, len(lyrics)]
+    for left_index, right_index in pairwise(boundaries):
+        missing = list(range(left_index + 1, right_index))
+        if not missing:
+            continue
+        left_time = (
+            transcript[0].start if left_index == -1 else anchors[left_index][1]
+        )
+        right_time = (
+            transcript[-1].end if right_index == len(lyrics) else anchors[right_index][0]
+        )
+        if right_time <= left_time:
+            required = 0.5 * len(missing)
+            right_time = (
+                transcript[-1].end if right_index == len(lyrics) else anchors[right_index][0]
+            )
+            left_time = max(0.0, right_time - required)
+            if left_index >= 0 and timings[left_index] is not None:
+                previous = timings[left_index]
+                shortened_end = max(previous.start + 0.1, left_time)
+                timings[left_index] = TimedLine(previous.start, shortened_end, previous.text)
+                left_time = shortened_end
+        filled = _proportional_timing(
+            tuple(lyrics[index] for index in missing), left_time, right_time
+        )
+        for index, timing in zip(missing, filled, strict=True):
+            timings[index] = timing
+
+    return tuple(timing for timing in timings if timing is not None)

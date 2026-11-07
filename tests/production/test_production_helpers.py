@@ -1,3 +1,4 @@
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
@@ -56,6 +57,48 @@ def test_timing_falls_back_when_asr_covers_only_a_short_song_island():
     assert timing[0].start == 10.0
     assert timing[-1].end == 263.0
     assert any(line.start <= 47.0 <= line.end for line in timing)
+
+
+def test_text_alignment_anchors_combined_lines_and_interpolates_gap():
+    lyrics = (
+        "เช้าวันนี้ไม่มีเธอเหมือนเคย",
+        "ไม่มีใครเอ่ยถามฉันว่าเป็นอย่างไร",
+        "หวานหวาน เธอรู้ไหมว่าฉันเหงาใจ",
+        "เมื่อไม่มีเธออยู่ใกล้เหมือนวันวาน",
+        "ห้องเดิมที่คุ้นเคยยังอยู่ตรงนี้",
+        "แต่ไม่มีเธอคนดีอยู่ข้างกัน",
+    )
+    transcript = (
+        TranscriptSegment(15.0, 27.0, lyrics[0] + lyrics[1]),
+        TranscriptSegment(30.0, 38.0, lyrics[2]),
+        TranscriptSegment(44.0, 51.0, lyrics[4]),
+        TranscriptSegment(52.0, 57.0, lyrics[5]),
+    )
+
+    timing = propose_timing(lyrics, transcript, audio_duration=70.0)
+
+    assert timing[0].start == 15.0
+    assert timing[1].end == 27.0
+    assert timing[2].start == 30.0
+    assert timing[3].start == 38.0
+    assert timing[3].end == 44.0
+    assert timing[4].start == 44.0
+    assert timing[5].end == 57.0
+    assert all(left.end <= right.start for left, right in pairwise(timing))
+
+
+def test_text_alignment_does_not_overlap_unrecognized_adlib_with_next_anchor():
+    lyrics = ("บรรทัดแรก", "หวานหวาน", "ห้องเดิมที่คุ้นเคย")
+    transcript = (
+        TranscriptSegment(36.0, 44.0, lyrics[0]),
+        TranscriptSegment(44.0, 51.0, lyrics[2]),
+    )
+
+    timing = propose_timing(lyrics, transcript, audio_duration=60.0)
+
+    assert tuple(line.text for line in timing) == lyrics
+    assert timing[0].end <= timing[1].start
+    assert timing[1].end <= timing[2].start
 
 
 def test_ass_generation_escapes_override_syntax(tmp_path: Path):
