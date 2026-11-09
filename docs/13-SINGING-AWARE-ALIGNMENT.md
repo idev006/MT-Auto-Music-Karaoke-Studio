@@ -59,6 +59,21 @@ An explicitly enabled unreviewed test run may create
 `production_data/diagnostic_candidate.mp4` for engineering evidence, but its manifest output
 `mp4` remains null and it can never be released through the final-listening command.
 
+## Pre-render validation
+
+Expensive rendering is downstream of deterministic gates. The engine inventories every embedded
+`USLT` and `SYLT` frame before timing work. Conflicting USLT texts fail closed; identical duplicate
+frames are permitted and selected deterministically. USLT is the canonical text authority only and
+never timing truth. SYLT, when present, is candidate timing evidence that still requires validation
+against the current audio and locks.
+
+For a correctness-only review render, `pre_render_validation.json` records audio and lyrics
+identity, timing-lock hash, timeline structure, locked-span completeness, audio-duration bounds and
+ASS centisecond projection error. A failed locked gate prevents `write_ass` and FFmpeg execution.
+Acoustic alignment remains explicitly marked pending until an independently benchmarked analyzer
+exists; human timing locks are the current authority and final listening QC remains mandatory.
+No percentage-based synchronization tolerance is part of the specification.
+
 ## Fail-closed gates
 
 1. Timeline integrity: positive duration, no overlap, provisional minimum phrase duration 0.5 s; durations over 12 s require review.

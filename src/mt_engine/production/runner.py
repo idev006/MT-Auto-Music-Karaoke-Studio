@@ -13,9 +13,10 @@ from uuid import uuid4
 from mutagen.mp3 import MP3
 
 from .intake import discover_song
-from .lyrics import extract_lyrics, propose_timing, transcribe
+from .lyrics import extract_lyrics, inspect_embedded_lyrics, propose_timing, transcribe
 from .media import embed_cover, run_ffmpeg_render, sha256_file, video_canvas, write_ass
 from .openrouter_vision import OpenRouterVisionConfig, inspect_samples
+from .pre_render import build_pre_render_validation_report
 from .qc import (
     build_alignment_checks,
     build_timing_diagnostics,
@@ -115,6 +116,8 @@ def produce_song(
         raise RuntimeError("MP3 integrity verification failed")
 
     lyric_lines = extract_lyrics(assets.mp3)
+    embedded_lyrics_inventory = inspect_embedded_lyrics(assets.mp3)
+    _write_json(production_data / "embedded_lyrics.json", asdict(embedded_lyrics_inventory))
     audio_duration = float(MP3(assets.mp3).info.length)
     verified_lock = None
     if timing_lock is not None:
@@ -178,6 +181,17 @@ def produce_song(
         production_data / "diagnostics.json",
         build_timing_diagnostics(timing, transcript, audio_duration=audio_duration),
     )
+    pre_render_report = build_pre_render_validation_report(
+        audio_payload_sha256=mp3_qc["source_audio_payload_sha256"],
+        audio_duration_seconds=audio_duration,
+        inventory=embedded_lyrics_inventory,
+        timing_lock_path=timing_lock.resolve() if timing_lock else None,
+        verified_lock=verified_lock,
+        timeline_validation=timeline_validation,
+    )
+    _write_json(production_data / "pre_render_validation.json", pre_render_report)
+    if verified_lock and pre_render_report["release_decision"] != "PASS_FOR_REVIEW_RENDER":
+        raise RuntimeError("Human-locked timing failed pre-render validation")
 
     if timeline_validation.status == "BLOCKED":
         source_hash_after = sha256_file(assets.mp3)

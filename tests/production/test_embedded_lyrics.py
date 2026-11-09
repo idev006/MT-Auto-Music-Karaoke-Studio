@@ -1,0 +1,51 @@
+from pathlib import Path
+
+import pytest
+from mutagen.id3 import ID3, SYLT, USLT
+
+from mt_engine.production.lyrics import extract_lyrics, inspect_embedded_lyrics
+
+
+def _tagged_file(path: Path, frames: list[object]) -> Path:
+    tags = ID3()
+    for frame in frames:
+        tags.add(frame)
+    tags.save(path)
+    return path
+
+
+def test_inventory_reports_uslt_and_sylt_without_treating_uslt_as_timing(tmp_path: Path):
+    path = _tagged_file(
+        tmp_path / "song.mp3",
+        [
+            USLT(encoding=3, lang="tha", desc="canonical", text="หนึ่ง\nสอง"),
+            SYLT(
+                encoding=3,
+                lang="tha",
+                format=2,
+                type=1,
+                desc="candidate",
+                text=[("หนึ่ง", 1000), ("สอง", 2000)],
+            ),
+        ],
+    )
+
+    inventory = inspect_embedded_lyrics(path)
+
+    assert inventory.uslt[0].line_count == 2
+    assert inventory.uslt[0].timestamp_count == 0
+    assert inventory.sylt[0].timestamp_count == 2
+    assert extract_lyrics(path) == ("หนึ่ง", "สอง")
+
+
+def test_conflicting_uslt_frames_fail_closed(tmp_path: Path):
+    path = _tagged_file(
+        tmp_path / "song.mp3",
+        [
+            USLT(encoding=3, lang="tha", desc="first", text="หนึ่ง\nสอง"),
+            USLT(encoding=3, lang="eng", desc="other", text="different lyrics"),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="conflicting canonical lyrics"):
+        inspect_embedded_lyrics(path)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -45,19 +46,86 @@ class TimedLine:
     highlight_spans: tuple[HighlightSpan, ...] = ()
 
 
-def extract_lyrics(mp3_path: Path) -> tuple[str, ...]:
-    tags = ID3(mp3_path)
-    frames = tags.getall("USLT")
-    if not frames:
-        raise ValueError("No embedded USLT lyrics were found")
+@dataclass(frozen=True, slots=True)
+class EmbeddedLyricsFrame:
+    kind: str
+    language: str
+    description: str
+    text_sha256: str
+    line_count: int
+    timestamp_count: int
+
+
+@dataclass(frozen=True, slots=True)
+class EmbeddedLyricsInventory:
+    uslt: tuple[EmbeddedLyricsFrame, ...]
+    sylt: tuple[EmbeddedLyricsFrame, ...]
+    selected_uslt_sha256: str
+
+
+def _displayable_lines(text: str) -> tuple[str, ...]:
     lines = []
-    for raw_line in frames[0].text.splitlines():
-        line = raw_line.strip()
+    for raw_line in text.splitlines():
+        line = unicodedata.normalize("NFC", raw_line.strip())
         if line and not (line.startswith("[") and line.endswith("]")):
             lines.append(line)
-    if not lines:
-        raise ValueError("Embedded lyrics contain no displayable lines")
     return tuple(lines)
+
+
+def inspect_embedded_lyrics(mp3_path: Path) -> EmbeddedLyricsInventory:
+    tags = ID3(mp3_path)
+    uslt_candidates = []
+    uslt_frames = []
+    for frame in tags.getall("USLT"):
+        lines = _displayable_lines(frame.text)
+        digest = hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
+        uslt_candidates.append((str(frame.lang), str(frame.desc), digest, lines))
+        uslt_frames.append(
+            EmbeddedLyricsFrame("USLT", str(frame.lang), str(frame.desc), digest, len(lines), 0)
+        )
+    if not uslt_candidates:
+        raise ValueError("No embedded USLT lyrics were found")
+    unique_lyrics = {candidate[3] for candidate in uslt_candidates}
+    if len(unique_lyrics) != 1:
+        raise ValueError("Embedded USLT frames contain conflicting canonical lyrics")
+    selected = min(uslt_candidates, key=lambda item: item[:3])
+    if not selected[3]:
+        raise ValueError("Embedded lyrics contain no displayable lines")
+
+    sylt_frames = []
+    for frame in tags.getall("SYLT"):
+        timed_text = tuple(frame.text or ())
+        display_text = "\n".join(str(item[0]) for item in timed_text)
+        digest = hashlib.sha256(display_text.encode("utf-8")).hexdigest()
+        sylt_frames.append(
+            EmbeddedLyricsFrame(
+                "SYLT",
+                str(frame.lang),
+                str(frame.desc),
+                digest,
+                len(timed_text),
+                len(timed_text),
+            )
+        )
+    return EmbeddedLyricsInventory(
+        tuple(sorted(uslt_frames, key=lambda item: (item.language, item.description))),
+        tuple(sorted(sylt_frames, key=lambda item: (item.language, item.description))),
+        selected[2],
+    )
+
+
+def extract_lyrics(mp3_path: Path) -> tuple[str, ...]:
+    tags = ID3(mp3_path)
+    inventory = inspect_embedded_lyrics(mp3_path)
+    selected = next(
+        frame
+        for frame in tags.getall("USLT")
+        if hashlib.sha256(
+            "\n".join(_displayable_lines(frame.text)).encode("utf-8")
+        ).hexdigest()
+        == inventory.selected_uslt_sha256
+    )
+    return _displayable_lines(selected.text)
 
 
 def transcribe(

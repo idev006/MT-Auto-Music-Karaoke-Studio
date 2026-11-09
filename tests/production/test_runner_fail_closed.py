@@ -6,10 +6,20 @@ import pytest
 
 from mt_engine.production import runner
 from mt_engine.production.intake import SongAssets
-from mt_engine.production.lyrics import TimedLine, TranscriptSegment
+from mt_engine.production.lyrics import (
+    EmbeddedLyricsFrame,
+    EmbeddedLyricsInventory,
+    TimedLine,
+    TranscriptSegment,
+)
 from mt_engine.production.media import sha256_file
 from mt_engine.production.release import ReleaseSignoffError, release_reviewed_candidate
 from mt_engine.production.timing_lock import lyrics_sha256
+
+
+def _inventory() -> EmbeddedLyricsInventory:
+    frame = EmbeddedLyricsFrame("USLT", "tha", "", "lyrics", 1, 0)
+    return EmbeddedLyricsInventory((frame,), (), "lyrics")
 
 
 def test_blocked_timing_never_renders_or_publishes_mp4(
@@ -31,6 +41,7 @@ def test_blocked_timing_never_renders_or_publishes_mp4(
     (ffmpeg_root / "bin" / "ffprobe.exe").write_bytes(b"tool")
 
     monkeypatch.setattr(runner, "discover_song", lambda *_args, **_kwargs: assets)
+    monkeypatch.setattr(runner, "inspect_embedded_lyrics", lambda _path: _inventory())
     monkeypatch.setattr(runner, "extract_lyrics", lambda _path: ("เนื้อร้องยาวมากเกินเวลา",))
     monkeypatch.setattr(
         runner,
@@ -132,6 +143,7 @@ def test_human_locked_timing_bypasses_asr_and_publishes_mp4(
     )
 
     monkeypatch.setattr(runner, "discover_song", lambda *_args, **_kwargs: assets)
+    monkeypatch.setattr(runner, "inspect_embedded_lyrics", lambda _path: _inventory())
     monkeypatch.setattr(runner, "extract_lyrics", lambda _path: lyrics)
     monkeypatch.setattr(
         runner,
