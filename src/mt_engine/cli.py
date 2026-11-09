@@ -10,6 +10,7 @@ from pathlib import Path
 
 from mt_engine.production import produce_song
 from mt_engine.production.openrouter_vision import rerun_vision_qc
+from mt_engine.production.release import release_reviewed_candidate
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -25,6 +26,11 @@ def _parser() -> argparse.ArgumentParser:
     produce.add_argument("--single-image-for-both", action="store_true")
     produce.add_argument("--accept-unreviewed-timing", action="store_true")
     produce.add_argument(
+        "--timing-lock",
+        type=Path,
+        help="Human-reviewed LOCKED timing JSON required for correctness-only rendering",
+    )
+    produce.add_argument(
         "--openrouter-config", type=Path, default=Path("config/openrouter.env")
     )
     vision = commands.add_parser(
@@ -34,6 +40,11 @@ def _parser() -> argparse.ArgumentParser:
     vision.add_argument(
         "--openrouter-config", type=Path, default=Path("config/openrouter.env")
     )
+    release = commands.add_parser(
+        "release-reviewed", help="Publish a hash-bound candidate after full listening sign-off"
+    )
+    release.add_argument("--target", type=Path, required=True)
+    release.add_argument("--signoff", type=Path, required=True)
     return parser
 
 
@@ -54,6 +65,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             accept_unreviewed_timing=args.accept_unreviewed_timing,
             ffmpeg_preset=args.ffmpeg_preset,
             openrouter_config=args.openrouter_config,
+            timing_lock=args.timing_lock,
         )
         print(
             json.dumps(
@@ -75,6 +87,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "vision-qc":
         result = rerun_vision_qc(args.target.resolve(), args.openrouter_config.resolve())
         print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "release-reviewed":
+        result = release_reviewed_candidate(args.target, args.signoff)
+        print(
+            json.dumps(
+                {
+                    "state": result.state,
+                    "mp4": str(result.mp4),
+                    "manifest": str(result.manifest),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
     return 2
 

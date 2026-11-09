@@ -35,6 +35,30 @@ Sound-engineering policy keeps acoustic truth separate from presentation timing:
 
 Approved corrections create a new immutable revision. Phrase Lock must preserve approved onset, offset and syllable spans across reruns. Existing `timing_revisions.timeline_json` may carry schema v2 until benchmark evidence justifies normalized tables.
 
+## Correctness-only release workflow
+
+A final `karaoke.mp4` is a released artifact, not merely a successful FFmpeg render:
+
+1. A timing lock declares `LOCKED` and `SYLLABLE_PROGRESSIVE`, binds the source audio and
+   canonical lyrics SHA-256 hashes, identifies the reviewer and review time, and contains every
+   canonical line in order. Every progressive unit declares `THAI_SYLLABLE` and `LOCKED` and the
+   spans reconstruct the canonical text exactly.
+2. `produce-song --timing-lock <file>` bypasses ASR timing, validates the lock and renders
+   `production_data/review_candidate.mp4`. It does not publish `karaoke.mp4`; state becomes
+   `AWAITING_FINAL_LISTENING_QC`.
+3. A sound engineer listens to the complete rendered candidate. The sign-off binds the candidate,
+   audio and lyrics hashes and declares `full_listening_completed=true`.
+4. `release-reviewed --target <folder> --signoff <file>` verifies the candidate has not changed,
+   verifies automated media QC and atomically publishes `karaoke.mp4`. The released state is
+   `RELEASED_VERIFIED`.
+
+Changing audio, lyrics or rendered candidate bytes invalidates the corresponding lock/sign-off.
+Automated proposals, including structurally plausible ones, cannot enter this release path without
+human locks and final listening sign-off.
+An explicitly enabled unreviewed test run may create
+`production_data/diagnostic_candidate.mp4` for engineering evidence, but its manifest output
+`mp4` remains null and it can never be released through the final-listening command.
+
 ## Fail-closed gates
 
 1. Timeline integrity: positive duration, no overlap, provisional minimum phrase duration 0.5 s; durations over 12 s require review.

@@ -81,7 +81,7 @@ def validate_timeline(
     *,
     minimum_phrase_seconds: float = 0.5,
     maximum_phrase_seconds: float = 12.0,
-    maximum_normalized_characters_per_second: float = 12.0,
+    maximum_normalized_characters_per_second: float | None = 12.0,
 ) -> TimelineValidation:
     findings: list[TimelineFinding] = []
     durations = [line.end - line.start for line in timing]
@@ -106,7 +106,10 @@ def validate_timeline(
             )
         normalized_character_count = sum(character.isalnum() for character in timing[index].text)
         reading_rate = normalized_character_count / duration if duration > 0 else float("inf")
-        if reading_rate > maximum_normalized_characters_per_second:
+        if (
+            maximum_normalized_characters_per_second is not None
+            and reading_rate > maximum_normalized_characters_per_second
+        ):
             findings.append(
                 TimelineFinding(
                     "IMPLAUSIBLE_LYRIC_RATE", "BLOCK", (index,),

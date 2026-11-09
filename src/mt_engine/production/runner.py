@@ -23,6 +23,7 @@ from .qc import (
     select_frame_samples,
 )
 from .timing_domain import validate_timeline
+from .timing_lock import load_verified_timing_lock
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,9 +69,10 @@ def produce_song(
     accept_unreviewed_timing: bool = False,
     ffmpeg_preset: str = "veryfast",
     openrouter_config: Path = Path("config/openrouter.env"),
+    timing_lock: Path | None = None,
 ) -> ProductionResult:
     assets = discover_song(source_dir, single_image_for_both=single_image_for_both)
-    if not accept_unreviewed_timing:
+    if timing_lock is None and not accept_unreviewed_timing:
         raise ValueError("This first ASR-guided timing proposal requires explicit test approval")
     ffmpeg = (ffmpeg_root / "bin" / "ffmpeg.exe").resolve()
     ffprobe = (ffmpeg_root / "bin" / "ffprobe.exe").resolve()
@@ -113,30 +115,60 @@ def produce_song(
         raise RuntimeError("MP3 integrity verification failed")
 
     lyric_lines = extract_lyrics(assets.mp3)
-    transcript, transcription_info = transcribe(
-        assets.mp3,
-        canonical_lyrics=lyric_lines,
-        model_name=model_name,
-        model_cache=dest_root.resolve() / ".models" / "faster-whisper",
-        cpu_threads=cpu_threads,
-    )
     audio_duration = float(MP3(assets.mp3).info.length)
-    asr_window_duration = transcript[-1].end - transcript[0].start
-    full_song_fallback_used = asr_window_duration < audio_duration * 0.35
-    timing = propose_timing(lyric_lines, transcript, audio_duration=audio_duration)
-    timeline_validation = validate_timeline(timing)
+    verified_lock = None
+    if timing_lock is not None:
+        verified_lock = load_verified_timing_lock(
+            timing_lock.resolve(),
+            expected_audio_sha256=source_hash_before,
+            expected_lyrics=lyric_lines,
+        )
+        transcript = ()
+        transcription_info = {"model": "none_human_locked"}
+        asr_window_duration = 0.0
+        full_song_fallback_used = False
+        timing = verified_lock.timing
+    else:
+        transcript, transcription_info = transcribe(
+            assets.mp3,
+            canonical_lyrics=lyric_lines,
+            model_name=model_name,
+            model_cache=dest_root.resolve() / ".models" / "faster-whisper",
+            cpu_threads=cpu_threads,
+        )
+        asr_window_duration = transcript[-1].end - transcript[0].start
+        full_song_fallback_used = asr_window_duration < audio_duration * 0.35
+        timing = propose_timing(lyric_lines, transcript, audio_duration=audio_duration)
+    timeline_validation = validate_timeline(
+        timing,
+        maximum_normalized_characters_per_second=None if verified_lock else 12.0,
+    )
     timing_payload = {
         "schema_version": 1,
         "method": (
-            "whole-song proportional fallback after insufficient faster-whisper coverage"
-            if full_song_fallback_used
-            else "monotonic canonical-lyrics alignment to faster-whisper segments"
+            "human-reviewed hash-bound timing lock"
+            if verified_lock
+            else (
+                "whole-song proportional fallback after insufficient faster-whisper coverage"
+                if full_song_fallback_used
+                else "monotonic canonical-lyrics alignment to faster-whisper segments"
+            )
         ),
         "full_song_fallback_used": full_song_fallback_used,
         "asr_window_duration_seconds": asr_window_duration,
         "audio_duration_seconds": audio_duration,
-        "review_required": True,
-        "test_approval_override": True,
+        "review_required": verified_lock is None,
+        "test_approval_override": verified_lock is None,
+        "human_lock": (
+            {
+                "reviewer": verified_lock.reviewer,
+                "reviewed_at": verified_lock.reviewed_at,
+                "audio_sha256": verified_lock.audio_sha256,
+                "lyrics_sha256": verified_lock.lyrics_sha256,
+            }
+            if verified_lock
+            else None
+        ),
         "transcription": transcription_info,
         "segments": [asdict(segment) for segment in timing],
         "transcript_evidence": [asdict(segment) for segment in transcript],
@@ -234,14 +266,16 @@ def produce_song(
     (production_data / "karaoke.ass").write_bytes(ass_path.read_bytes())
 
     final_mp3 = target_dir / "song_with_cover.mp3"
-    final_mp4 = target_dir / "karaoke.mp4"
+    rendered_mp4 = production_data / (
+        "review_candidate.mp4" if verified_lock else "diagnostic_candidate.mp4"
+    )
     os.replace(staged_mp3, final_mp3)
-    os.replace(staged_mp4, final_mp4)
+    os.replace(staged_mp4, rendered_mp4)
     alignment_checks = build_alignment_checks(timing, transcript)
     frame_samples = select_frame_samples(alignment_checks, count=12)
     frame_evidence = extract_qc_frames(
         ffmpeg,
-        final_mp4,
+        rendered_mp4,
         frame_samples,
         production_data / "qc_frames",
     )
@@ -261,16 +295,17 @@ def produce_song(
         "mp4": {
             "decode_passed": True,
             "probe": video_probe,
-            "sha256": sha256_file(final_mp4),
+            "sha256": sha256_file(rendered_mp4),
         },
         "timing": {
-            "review_required": True,
-            "accepted_for_test_only": True,
+            "review_required": verified_lock is None,
+            "accepted_for_test_only": verified_lock is None,
             "measured_alignment_kpi": False,
+            "human_locked": verified_lock is not None,
             "structural_validation": timeline_validation.to_primitive(),
         },
         "karaoke_sampling_qc": {
-            "status": "REVIEW_REQUIRED",
+            "status": "AWAITING_FINAL_LISTENING_QC" if verified_lock else "REVIEW_REQUIRED",
             "sample_count": len(frame_evidence),
             "all_sampled_frames_have_subtitle_pixels": all(
                 bool(item["subtitle_pixels_present"]) for item in frame_evidence
@@ -291,7 +326,11 @@ def produce_song(
         "state": (
             "BLOCKED_TIMING_VALIDATION"
             if timeline_validation.status == "BLOCKED"
-            else "SUCCEEDED_WITH_REVIEW_REQUIRED"
+            else (
+                "AWAITING_FINAL_LISTENING_QC"
+                if verified_lock
+                else "AWAITING_TIMING_REVIEW"
+            )
         ),
         "source": {
             "folder": str(assets.source_dir),
@@ -307,12 +346,28 @@ def produce_song(
         },
         "outputs": {
             "mp3": {"path": final_mp3.name, "sha256": sha256_file(final_mp3)},
-            "mp4": {"path": final_mp4.name, "sha256": sha256_file(final_mp4)},
+            "mp4": None,
+            "review_candidate": (
+                {
+                    "path": str(rendered_mp4.relative_to(target_dir)),
+                    "sha256": sha256_file(rendered_mp4),
+                }
+                if verified_lock
+                else None
+            ),
+            "diagnostic_candidate": (
+                {
+                    "path": str(rendered_mp4.relative_to(target_dir)),
+                    "sha256": sha256_file(rendered_mp4),
+                }
+                if not verified_lock
+                else None
+            ),
         },
         "tools": {
             "ffmpeg": _tool_version(ffmpeg),
             "ffprobe": _tool_version(ffprobe),
-            "faster_whisper_model": model_name,
+            "faster_whisper_model": model_name if not verified_lock else None,
         },
         "started_at": started_at,
         "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
@@ -329,8 +384,10 @@ def produce_song(
         assets.source_dir,
         target_dir,
         final_mp3,
-        final_mp4,
+        None,
         manifest_path,
         qc_path,
-        "SUCCEEDED_WITH_REVIEW_REQUIRED",
+        "AWAITING_FINAL_LISTENING_QC"
+        if verified_lock
+        else "AWAITING_TIMING_REVIEW",
     )
