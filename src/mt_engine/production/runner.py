@@ -27,9 +27,10 @@ class ProductionResult:
     source_dir: Path
     target_dir: Path
     mp3_output: Path
-    mp4_output: Path
+    mp4_output: Path | None
     manifest: Path
     qc_report: Path
+    state: str
 
 
 def _tool_version(executable: Path) -> str:
@@ -119,6 +120,89 @@ def produce_song(
     full_song_fallback_used = asr_window_duration < audio_duration * 0.35
     timing = propose_timing(lyric_lines, transcript, audio_duration=audio_duration)
     timeline_validation = validate_timeline(timing)
+    timing_payload = {
+        "schema_version": 1,
+        "method": (
+            "whole-song proportional fallback after insufficient faster-whisper coverage"
+            if full_song_fallback_used
+            else "monotonic canonical-lyrics alignment to faster-whisper segments"
+        ),
+        "full_song_fallback_used": full_song_fallback_used,
+        "asr_window_duration_seconds": asr_window_duration,
+        "audio_duration_seconds": audio_duration,
+        "review_required": True,
+        "test_approval_override": True,
+        "transcription": transcription_info,
+        "segments": [asdict(segment) for segment in timing],
+        "transcript_evidence": [asdict(segment) for segment in transcript],
+    }
+    _write_json(production_data / "timing.json", timing_payload)
+
+    if timeline_validation.status == "BLOCKED":
+        source_hash_after = sha256_file(assets.mp3)
+        if source_hash_after != source_hash_before:
+            raise RuntimeError("Source MP3 changed during production")
+        final_mp3 = target_dir / "song_with_cover.mp3"
+        os.replace(staged_mp3, final_mp3)
+        qc_path = production_data / "qc_report.json"
+        _write_json(
+            qc_path,
+            {
+                "schema_version": 1,
+                "source_immutable": True,
+                "mp3": mp3_qc,
+                "mp4": None,
+                "timing": {
+                    "review_required": True,
+                    "accepted_for_test_only": False,
+                    "measured_alignment_kpi": False,
+                    "structural_validation": timeline_validation.to_primitive(),
+                },
+                "karaoke_sampling_qc": {"status": "NOT_RUN_TIMING_BLOCKED"},
+            },
+        )
+        manifest_path = production_data / "manifest.json"
+        _write_json(
+            manifest_path,
+            {
+                "schema_version": 1,
+                "job_id": job_id,
+                "run_id": run_id,
+                "state": "BLOCKED_TIMING_VALIDATION",
+                "source": {
+                    "folder": str(assets.source_dir),
+                    "mp3": assets.mp3.name,
+                    "mp3_sha256": source_hash_before,
+                },
+                "outputs": {
+                    "mp3": {"path": final_mp3.name, "sha256": sha256_file(final_mp3)},
+                    "mp4": None,
+                },
+                "tools": {"faster_whisper_model": model_name},
+                "started_at": started_at,
+                "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+            },
+        )
+        with events_path.open("a", encoding="utf-8") as stream:
+            stream.write(
+                json.dumps(
+                    {"event": "job_run.blocked_timing_validation", "run_id": run_id},
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+        return ProductionResult(
+            job_id,
+            run_id,
+            assets.source_dir,
+            target_dir,
+            final_mp3,
+            None,
+            manifest_path,
+            qc_path,
+            "BLOCKED_TIMING_VALIDATION",
+        )
+
     canvas = video_canvas(assets.background)
     ass_path = staging / "karaoke.ass"
     write_ass(timing, ass_path, canvas=canvas)
@@ -138,23 +222,6 @@ def produce_song(
     if source_hash_after != source_hash_before:
         raise RuntimeError("Source MP3 changed during production")
 
-    timing_payload = {
-        "schema_version": 1,
-        "method": (
-            "whole-song proportional fallback after insufficient faster-whisper coverage"
-            if full_song_fallback_used
-            else "monotonic canonical-lyrics alignment to faster-whisper segments"
-        ),
-        "full_song_fallback_used": full_song_fallback_used,
-        "asr_window_duration_seconds": asr_window_duration,
-        "audio_duration_seconds": audio_duration,
-        "review_required": True,
-        "test_approval_override": True,
-        "transcription": transcription_info,
-        "segments": [asdict(segment) for segment in timing],
-        "transcript_evidence": [asdict(segment) for segment in transcript],
-    }
-    _write_json(production_data / "timing.json", timing_payload)
     (production_data / "karaoke.ass").write_bytes(ass_path.read_bytes())
 
     final_mp3 = target_dir / "song_with_cover.mp3"
@@ -256,4 +323,5 @@ def produce_song(
         final_mp4,
         manifest_path,
         qc_path,
+        "SUCCEEDED_WITH_REVIEW_REQUIRED",
     )

@@ -19,18 +19,35 @@ Whisper is a replaceable phrase-anchor adapter. OpenRouter Vision is a render-te
 - `SyllableSpan`: separate sung and highlight clocks, sustain flag, confidence and evidence.
 - `PhraseState`: `AUTO`, `REVIEW_REQUIRED`, or `LOCKED`.
 
+Sound-engineering policy keeps acoustic truth separate from presentation timing:
+
+- `sung_start` uses the earliest reliable consonant attack. A detected vowel onset is a
+  `VOWEL_FALLBACK` and requires review; it must not silently impersonate a consonant boundary.
+- The pilot presentation preset uses 120 ms highlight lead, 80 ms release lag and 1,200 ms
+  static line pre-roll. These are versioned, configurable hypotheses to calibrate with listeners,
+  never offsets baked into acoustic evidence.
+- A melisma remains one lyric syllable through its detected sung tail. Pitch changes do not
+  create extra lyric tokens, and Thai code points are never treated as independent syllables.
+- Phrase-only evidence renders as `LINE_CUE_ONLY`; it must not produce a progressive `\\kf`
+  sweep. Progressive rendering requires evidence or a lock for every displayed unit.
+- Canonical lead, backing vocal and ad-lib are separate lanes. Secondary vocals cannot consume,
+  shift or create primary canonical occurrences.
+
 Approved corrections create a new immutable revision. Phrase Lock must preserve approved onset, offset and syllable spans across reruns. Existing `timing_revisions.timeline_json` may carry schema v2 until benchmark evidence justifies normalized tables.
 
 ## Fail-closed gates
 
 1. Timeline integrity: positive duration, no overlap, provisional minimum phrase duration 0.5 s; durations over 12 s require review.
+   The provisional normalized-character rate gate is only an emergency plausibility check, not
+   proof of Thai syllable alignment. A blocked candidate may persist evidence and publish the
+   independent MP3 branch, but it must not render or publish an MP4.
 2. Render fidelity: 10–15 stratified plus risk-prioritized frames; Vision/OCR cannot override temporal failure.
 3. Phrase accuracy benchmark: onset/offset measured against human annotations.
 4. Sustain benchmark: final sung syllable/highlight offset measured against human annotations.
 5. Repeat identity: wrong chorus occurrence count must be zero.
 6. Lock preservation: approved phrases remain byte-for-byte equivalent in timing projection.
 
-Provisional experimental targets—not achieved claims—are phrase onset MAE <=150 ms, phrase offset MAE <=250 ms, word onset P95 <=300 ms, sustained-syllable offset <=300 ms, wrong chorus match 0 and approved phrase preservation 100%.
+Provisional experimental targets—not achieved claims—are phrase onset MAE <=150 ms, phrase offset MAE <=250 ms, syllable onset P95 <=300 ms, sustained-syllable offset <=300 ms, wrong chorus match 0 and approved phrase preservation 100%.
 
 ## Delivery phases
 
@@ -46,3 +63,9 @@ Provisional experimental targets—not achieved claims—are phrase onset MAE <=
 The `อยู่เป็นเพื่อนกันนาน ๆ นะ v9` candidate spans most of the song after global sequence alignment, but strict validation blocks it: four phrases are about 0.10–0.145 s, two exceed 12 s and one pair overlaps by 0.086 s. This candidate is not synchronized or publishable even when OpenRouter confirms the rendered text.
 
 Implementation now retains faster-whisper word timestamps/probabilities and can render multiple ASS `\\kf` spans for whitespace-delimited lyric tokens. The final token holds through the phrase end and is marked sustained when its evidence-backed duration is materially longer than the typical token. This removes the one-tag renderer limitation, but it remains `REVIEW_REQUIRED` until Thai syllable segmentation and voiced-tail DSP are benchmarked.
+
+The runner now fails closed when structural timing validation is `BLOCKED`: it persists timing,
+QC and manifest evidence, publishes no `karaoke.mp4`, skips frame/Vision QC and records
+`BLOCKED_TIMING_VALIDATION`. The MP3 cover branch remains independently publishable. This safety
+behavior does not improve alignment accuracy; it prevents an invalid timing candidate from being
+mistaken for a completed karaoke video.
