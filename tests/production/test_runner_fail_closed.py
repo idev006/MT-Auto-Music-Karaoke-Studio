@@ -79,6 +79,7 @@ def test_blocked_timing_never_renders_or_publishes_mp4(
         tmp_path / "dest",
         ffmpeg_root=ffmpeg_root,
         accept_unreviewed_timing=True,
+        openrouter_mode="off",
     )
 
     assert result.state == "BLOCKED_TIMING_VALIDATION"
@@ -187,6 +188,7 @@ def test_human_locked_timing_bypasses_asr_and_publishes_mp4(
         tmp_path / "dest",
         ffmpeg_root=ffmpeg_root,
         timing_lock=lock_path,
+        openrouter_mode="off",
     )
 
     assert result.state == "AWAITING_FINAL_LISTENING_QC"

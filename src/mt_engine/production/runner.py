@@ -15,6 +15,12 @@ from mutagen.mp3 import MP3
 from .intake import discover_song
 from .lyrics import extract_lyrics, inspect_embedded_lyrics, propose_timing, transcribe
 from .media import embed_cover, run_ffmpeg_render, sha256_file, video_canvas, write_ass
+from .openrouter_config import (
+    OpenRouterConfig,
+    OpenRouterSpendLedger,
+    should_use_openrouter_transcription,
+)
+from .openrouter_transcription import transcribe_openrouter
 from .openrouter_vision import OpenRouterVisionConfig, inspect_samples
 from .pre_render import build_pre_render_validation_report
 from .qc import (
@@ -71,6 +77,7 @@ def produce_song(
     accept_unreviewed_timing: bool = False,
     ffmpeg_preset: str = "veryfast",
     openrouter_config: Path = Path("config/openrouter.env"),
+    openrouter_mode: str | None = None,
     timing_lock: Path | None = None,
 ) -> ProductionResult:
     assets = discover_song(source_dir, single_image_for_both=single_image_for_both)
@@ -92,6 +99,10 @@ def produce_song(
     target_dir.mkdir(parents=True, exist_ok=True)
     production_data = target_dir / "production_data"
     production_data.mkdir(exist_ok=True)
+    router_config = OpenRouterConfig.from_file(openrouter_config.resolve()).with_mode(
+        openrouter_mode
+    )
+    router_spend = OpenRouterSpendLedger(router_config.max_cost_usd)
     job_id = uuid4().hex
     run_id = uuid4().hex
     staging = target_dir / ".work" / run_id
@@ -147,6 +158,72 @@ def produce_song(
         timing,
         maximum_normalized_characters_per_second=None if verified_lock else 12.0,
     )
+    timing_diagnostics = build_timing_diagnostics(
+        timing, transcript, audio_duration=audio_duration
+    )
+    openrouter_transcription: dict[str, object] = {
+        "mode": router_config.mode.value,
+        "status": "SKIPPED_HUMAN_TIMING_LOCK" if verified_lock else "SKIPPED_MODE_OFF",
+    }
+    if not verified_lock:
+        should_use_cloud, auto_needed = should_use_openrouter_transcription(
+            router_config.mode,
+            timeline_status=timeline_validation.status,
+            asr_window_ratio=float(timing_diagnostics["asr_window_ratio"]),
+            alignment_review_count=int(timing_diagnostics["alignment_review_count"]),
+        )
+        if router_config.mode.value == "auto" and not auto_needed:
+            openrouter_transcription["status"] = "SKIPPED_AUTO_NOT_NEEDED"
+        if should_use_cloud:
+            last_error: Exception | None = None
+            for _attempt in range(router_config.retry_attempts):
+                try:
+                    cloud_transcript, cloud_info = transcribe_openrouter(
+                        router_config, router_spend, assets.mp3
+                    )
+                    cloud_timing = propose_timing(
+                        lyric_lines, cloud_transcript, audio_duration=audio_duration
+                    )
+                    cloud_validation = validate_timeline(cloud_timing)
+                    cloud_diagnostics = build_timing_diagnostics(
+                        cloud_timing, cloud_transcript, audio_duration=audio_duration
+                    )
+                    status_rank = {"BLOCKED": 0, "REVIEW_REQUIRED": 1, "PASS": 2}
+                    local_score = (
+                        status_rank[timeline_validation.status],
+                        int(timing_diagnostics["alignment_pass_count"]),
+                        float(timing_diagnostics["asr_window_ratio"]),
+                    )
+                    cloud_score = (
+                        status_rank[cloud_validation.status],
+                        int(cloud_diagnostics["alignment_pass_count"]),
+                        float(cloud_diagnostics["asr_window_ratio"]),
+                    )
+                    selected = cloud_score > local_score
+                    openrouter_transcription = {
+                        "mode": router_config.mode.value,
+                        "status": "USED" if selected else "COMPLETED_LOCAL_RETAINED",
+                        "auto_triggered": auto_needed,
+                        "candidate_score": cloud_score,
+                        "local_score": local_score,
+                        "provider_result": cloud_info,
+                    }
+                    if selected:
+                        transcript = cloud_transcript
+                        timing = cloud_timing
+                        timeline_validation = cloud_validation
+                        timing_diagnostics = cloud_diagnostics
+                        transcription_info = cloud_info
+                    break
+                except (OSError, TimeoutError, KeyError, ValueError, RuntimeError) as error:
+                    last_error = error
+            else:
+                openrouter_transcription = {
+                    "mode": router_config.mode.value,
+                    "status": "REVIEW_REQUIRED_PROVIDER_ERROR",
+                    "auto_triggered": auto_needed,
+                    "error": f"{type(last_error).__name__}: {last_error}",
+                }
     timing_payload = {
         "schema_version": 1,
         "method": (
@@ -174,13 +251,15 @@ def produce_song(
             else None
         ),
         "transcription": transcription_info,
+        "openrouter_transcription": openrouter_transcription,
+        "openrouter_spend": router_spend.to_primitive(),
         "segments": [asdict(segment) for segment in timing],
         "transcript_evidence": [asdict(segment) for segment in transcript],
     }
     _write_json(production_data / "timing.json", timing_payload)
     _write_json(
         production_data / "diagnostics.json",
-        build_timing_diagnostics(timing, transcript, audio_duration=audio_duration),
+        timing_diagnostics,
     )
     _write_json(
         production_data / "timing_review_package.json",
@@ -227,6 +306,11 @@ def produce_song(
                     "structural_validation": timeline_validation.to_primitive(),
                 },
                 "karaoke_sampling_qc": {"status": "NOT_RUN_TIMING_BLOCKED"},
+                "openrouter": {
+                    "mode": router_config.mode.value,
+                    "transcription": openrouter_transcription,
+                    "spend": router_spend.to_primitive(),
+                },
             },
         )
         manifest_path = production_data / "manifest.json"
@@ -246,7 +330,11 @@ def produce_song(
                     "mp3": {"path": final_mp3.name, "sha256": sha256_file(final_mp3)},
                     "mp4": None,
                 },
-                "tools": {"faster_whisper_model": model_name},
+                "tools": {
+                    "faster_whisper_model": model_name,
+                    "openrouter_mode": router_config.mode.value,
+                    "openrouter_spend": router_spend.to_primitive(),
+                },
                 "started_at": started_at,
                 "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             },
@@ -306,14 +394,16 @@ def produce_song(
         frame_samples,
         production_data / "qc_frames",
     )
+    alignment_review_count = sum(
+        check.status == "REVIEW_REQUIRED" for check in alignment_checks
+    )
     vision_config = OpenRouterVisionConfig.from_file(openrouter_config.resolve())
     vision_qc = inspect_samples(
         vision_config,
         production_data / "qc_frames",
         frame_evidence,
-    )
-    alignment_review_count = sum(
-        check.status == "REVIEW_REQUIRED" for check in alignment_checks
+        ledger=router_spend,
+        auto_needed=verified_lock is not None or alignment_review_count > 0,
     )
     qc_payload = {
         "schema_version": 1,
@@ -342,6 +432,11 @@ def produce_song(
             "alignment_lines_requiring_review": alignment_review_count,
             "samples": frame_evidence,
             "openrouter_vision_qc": vision_qc,
+        },
+        "openrouter": {
+            "mode": router_config.mode.value,
+            "transcription": openrouter_transcription,
+            "spend": router_spend.to_primitive(),
         },
     }
     qc_path = production_data / "qc_report.json"
@@ -395,6 +490,8 @@ def produce_song(
             "ffmpeg": _tool_version(ffmpeg),
             "ffprobe": _tool_version(ffprobe),
             "faster_whisper_model": model_name if not verified_lock else None,
+            "openrouter_mode": router_config.mode.value,
+            "openrouter_spend": router_spend.to_primitive(),
         },
         "started_at": started_at,
         "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),

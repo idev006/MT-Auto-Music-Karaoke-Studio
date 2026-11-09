@@ -4,67 +4,18 @@ from __future__ import annotations
 
 import base64
 import json
-import os
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
+from .openrouter_config import (
+    OpenRouterConfig,
+    OpenRouterMode,
+    OpenRouterSpendLedger,
+)
 
-class OpenRouterConfigError(ValueError):
-    pass
-
-
-@dataclass(frozen=True, slots=True)
-class OpenRouterVisionConfig:
-    enabled: bool
-    api_key: str = field(repr=False)
-    model: str = "google/gemini-2.5-flash"
-    base_url: str = "https://openrouter.ai/api/v1"
-    frame_count: int = 12
-    timeout_seconds: int = 90
-    app_name: str = "MT Auto Music Karaoke Studio"
-    retry_attempts: int = 3
-
-    @classmethod
-    def from_file(cls, path: Path) -> OpenRouterVisionConfig:
-        file_values: dict[str, str] = {}
-        if path.is_file():
-            for raw_line in path.read_text(encoding="utf-8").splitlines():
-                line = raw_line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                file_values[key.strip()] = value.strip()
-
-        def setting(name: str, default: str = "") -> str:
-            return os.environ.get(name, file_values.get(name, default))
-
-        enabled = setting("OPENROUTER_VISION_QC_ENABLED", "false").casefold() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }
-        api_key = setting("OPENROUTER_API_KEY")
-        if enabled and not api_key:
-            raise OpenRouterConfigError(
-                f"OpenRouter Vision QC is enabled but OPENROUTER_API_KEY is empty in {path}"
-            )
-        frame_count = int(setting("OPENROUTER_VISION_QC_FRAME_COUNT", "12"))
-        if not 10 <= frame_count <= 15:
-            raise OpenRouterConfigError("Vision QC frame count must be between 10 and 15")
-        return cls(
-            enabled=enabled,
-            api_key=api_key,
-            model=setting("OPENROUTER_VISION_MODEL", "google/gemini-2.5-flash"),
-            base_url=setting("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/"),
-            frame_count=frame_count,
-            timeout_seconds=int(setting("OPENROUTER_TIMEOUT_SECONDS", "90")),
-            app_name=setting("OPENROUTER_APP_NAME", "MT Auto Music Karaoke Studio"),
-            retry_attempts=int(setting("OPENROUTER_RETRY_ATTEMPTS", "3")),
-        )
+OpenRouterVisionConfig = OpenRouterConfig
 
 
 def _request_payload(config: OpenRouterVisionConfig, frame: Path, expected_text: str) -> bytes:
@@ -78,7 +29,7 @@ def _request_payload(config: OpenRouterVisionConfig, frame: Path, expected_text:
         "(0..1), and notes. Do not infer text that is not visibly rendered."
     )
     payload = {
-        "model": config.model,
+        "model": config.vision_model,
         "messages": [
             {
                 "role": "user",
@@ -116,7 +67,8 @@ def inspect_frame(
     content = body["choices"][0]["message"]["content"]
     result = json.loads(content)
     return {
-        "model": config.model,
+        "model": config.vision_model,
+        "cost_usd": float((body.get("usage") or {}).get("cost") or 0.0),
         "visible_text": result.get("visible_text"),
         "matches_expected": result.get("matches_expected"),
         "confidence": result.get("confidence"),
@@ -128,11 +80,26 @@ def inspect_samples(
     config: OpenRouterVisionConfig,
     frame_directory: Path,
     samples: tuple[dict[str, object], ...],
+    *,
+    ledger: OpenRouterSpendLedger | None = None,
+    auto_needed: bool = True,
 ) -> dict[str, object]:
     if not config.enabled:
-        return {"status": "NOT_CONFIGURED", "results": []}
+        return {"status": "SKIPPED_MODE_OFF", "mode": config.mode.value, "results": []}
+    if config.mode is OpenRouterMode.AUTO and not auto_needed:
+        return {"status": "SKIPPED_AUTO_NOT_NEEDED", "mode": config.mode.value, "results": []}
+    ledger = ledger or OpenRouterSpendLedger(config.max_cost_usd)
     results = []
     for sample in samples:
+        if not ledger.can_start(config.request_cost_guard_usd):
+            results.append(
+                {
+                    "frame": sample["frame"],
+                    "matches_expected": None,
+                    "error": "OPENROUTER_BUDGET_GUARD",
+                }
+            )
+            break
         last_error: Exception | None = None
         for attempt in range(config.retry_attempts):
             try:
@@ -140,6 +107,11 @@ def inspect_samples(
                     config,
                     frame_directory / str(sample["frame"]),
                     str(sample["expected_text"]),
+                )
+                ledger.record(
+                    operation="vision_qc",
+                    model=config.vision_model,
+                    cost_usd=float(result.pop("cost_usd", 0.0)),
                 )
                 results.append({"frame": sample["frame"], **result})
                 break
@@ -156,7 +128,12 @@ def inspect_samples(
                 }
             )
     passed = results and all(item.get("matches_expected") is True for item in results)
-    return {"status": "PASS" if passed else "REVIEW_REQUIRED", "results": results}
+    return {
+        "status": "PASS" if passed else "REVIEW_REQUIRED",
+        "mode": config.mode.value,
+        "results": results,
+        "spend": ledger.to_primitive(),
+    }
 
 
 def rerun_vision_qc(target_dir: Path, config_path: Path) -> dict[str, object]:

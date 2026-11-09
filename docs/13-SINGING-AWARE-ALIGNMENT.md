@@ -52,6 +52,11 @@ A final `karaoke.mp4` is a released artifact, not merely a successful FFmpeg ren
    verifies automated media QC and atomically publishes `karaoke.mp4`. The released state is
    `RELEASED_VERIFIED`.
 
+## OpenRouter modes
+
+OpenRouter is evidence augmentation, not release authority. `off` performs no external request. `auto` requests timestamped cloud transcription only when the local timeline is blocked, ASR coverage is below 75%, or any canonical lyric line lacks sufficient overlapping ASR evidence; Vision QC runs only for a locked review candidate or when alignment review remains. `always` requests the cloud transcription second opinion for every non-locked run and performs eligible Vision QC. Candidate selection is deterministic: structural status, alignment-pass count, then ASR-window coverage. A cloud result can replace the local proposal only when this score is strictly better. It never creates `LOCKED` syllable spans.
+
+Transcription and Vision share one cost ledger. Configuration greater than USD 0.20 per song is rejected, each provider-reported `usage.cost` is recorded, and a request guard prevents starting work that could exceed the remaining allowance. Provider failure retains local evidence and produces `REVIEW_REQUIRED_PROVIDER_ERROR`; it cannot silently approve publication.
 Changing audio, lyrics or rendered candidate bytes invalidates the corresponding lock/sign-off.
 Automated proposals, including structurally plausible ones, cannot enter this release path without
 human locks and final listening sign-off.

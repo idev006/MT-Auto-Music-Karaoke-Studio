@@ -33,6 +33,11 @@ def _parser() -> argparse.ArgumentParser:
     produce.add_argument(
         "--openrouter-config", type=Path, default=Path("config/openrouter.env")
     )
+    produce.add_argument(
+        "--openrouter-mode",
+        choices=("off", "auto", "always"),
+        help="Override OPENROUTER_MODE for this song",
+    )
     vision = commands.add_parser(
         "vision-qc", help="Rerun OpenRouter Vision QC for an existing target"
     )
@@ -65,6 +70,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             accept_unreviewed_timing=args.accept_unreviewed_timing,
             ffmpeg_preset=args.ffmpeg_preset,
             openrouter_config=args.openrouter_config,
+            openrouter_mode=args.openrouter_mode,
             timing_lock=args.timing_lock,
         )
         print(
