@@ -285,52 +285,10 @@ def _text_aligned_timing(
         for index, timing in zip(missing, filled, strict=True):
             timings[index] = timing
 
-    materialized = tuple(timing for timing in timings if timing is not None)
-    return tuple(_attach_highlight_spans(line, transcript) for line in materialized)
-
-
-def _attach_highlight_spans(
-    line: TimedLine, transcript: tuple[TranscriptSegment, ...]
-) -> TimedLine:
-    tokens = line.text.split()
-    if len(tokens) < 2:
-        return line
-    evidence_words = sorted(
-        (
-            word
-            for segment in transcript
-            if segment.start < line.end and segment.end > line.start
-            for word in segment.words
-            if word.start < line.end and word.end > line.start
-        ),
-        key=lambda word: word.start,
-    )
-    if not evidence_words:
-        return line
-    boundaries = [line.start]
-    for token_index in range(1, len(tokens)):
-        evidence_index = min(
-            len(evidence_words) - 1,
-            max(0, round(token_index * len(evidence_words) / len(tokens)) - 1),
-        )
-        proposed = min(line.end, max(line.start, evidence_words[evidence_index].end))
-        boundaries.append(max(boundaries[-1] + 0.01, proposed))
-    boundaries.append(line.end)
-    if any(left >= right for left, right in pairwise(boundaries)):
-        return line
-    durations = [right - left for left, right in pairwise(boundaries)]
-    typical = sorted(durations)[len(durations) // 2]
-    spans = tuple(
-        HighlightSpan(
-            token + (" " if index < len(tokens) - 1 else ""),
-            boundaries[index],
-            boundaries[index + 1],
-            index == len(tokens) - 1 and durations[index] >= max(0.8, typical * 1.5),
-            "faster_whisper_word_boundary",
-        )
-        for index, token in enumerate(tokens)
-    )
-    return TimedLine(line.start, line.end, line.text, spans)
+    # Whisper word timestamps are retained as diagnostic evidence only. They
+    # are not Thai syllable boundaries and must never create progressive ASS
+    # spans without an independently reviewed timing lock.
+    return tuple(timing for timing in timings if timing is not None)
 
 
 def _global_anchor_matches(

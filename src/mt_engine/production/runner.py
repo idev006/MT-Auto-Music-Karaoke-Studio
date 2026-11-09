@@ -23,6 +23,7 @@ from .qc import (
     extract_qc_frames,
     select_frame_samples,
 )
+from .review_package import build_timing_review_package
 from .timing_domain import validate_timeline
 from .timing_lock import load_verified_timing_lock
 
@@ -181,6 +182,18 @@ def produce_song(
         production_data / "diagnostics.json",
         build_timing_diagnostics(timing, transcript, audio_duration=audio_duration),
     )
+    _write_json(
+        production_data / "timing_review_package.json",
+        build_timing_review_package(
+            timing,
+            transcript,
+            timeline_validation,
+            audio_sha256=source_hash_before,
+            lyrics_sha256=verified_lock.lyrics_sha256
+            if verified_lock
+            else embedded_lyrics_inventory.selected_uslt_sha256,
+        ),
+    )
     pre_render_report = build_pre_render_validation_report(
         audio_payload_sha256=mp3_qc["source_audio_payload_sha256"],
         audio_duration_seconds=audio_duration,
@@ -260,7 +273,7 @@ def produce_song(
 
     canvas = video_canvas(assets.background)
     ass_path = staging / "karaoke.ass"
-    write_ass(timing, ass_path, canvas=canvas)
+    write_ass(timing, ass_path, canvas=canvas, progressive=verified_lock is not None)
     staged_mp4 = staging / "karaoke.mp4"
     video_probe = run_ffmpeg_render(
         ffmpeg,

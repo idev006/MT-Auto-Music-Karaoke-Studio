@@ -101,7 +101,18 @@ Provisional experimental targets—not achieved claims—are phrase onset MAE <=
 
 The `อยู่เป็นเพื่อนกันนาน ๆ นะ v9` candidate spans most of the song after global sequence alignment, but strict validation blocks it: four phrases are about 0.10–0.145 s, two exceed 12 s and one pair overlaps by 0.086 s. This candidate is not synchronized or publishable even when OpenRouter confirms the rendered text.
 
-Implementation now retains faster-whisper word timestamps/probabilities and can render multiple ASS `\\kf` spans for whitespace-delimited lyric tokens. The final token holds through the phrase end and is marked sustained when its evidence-backed duration is materially longer than the typical token. This removes the one-tag renderer limitation, but it remains `REVIEW_REQUIRED` until Thai syllable segmentation and voiced-tail DSP are benchmarked.
+Implementation retains faster-whisper word timestamps/probabilities as diagnostic evidence only.
+Automatic ASR proposals no longer create progressive ASS spans: Thai Whisper tokens are not
+syllable boundaries, and whitespace tokens are not a valid Thai singing unit. Unlocked diagnostic
+candidates render `LINE_CUE_ONLY` without `\\kf`. Progressive spans can enter the renderer only
+through a hash-bound human timing lock.
+
+Each run also emits `timing_review_package.json`, borrowing the useful stable-identity and review
+workflow concepts from reference-anchor karaoke tools without importing their English-centric
+word/syllable assumptions. Every canonical line receives a deterministic phrase ID, repeat
+occurrence index, ASR evidence summary and one of `PROPOSED`, `UNKNOWN`, `CONFLICT`, or `LOCKED`.
+Repeated text therefore remains distinct across the song and unresolved evidence cannot silently
+become release timing.
 
 The runner now fails closed when structural timing validation is `BLOCKED`: it persists timing,
 QC and manifest evidence, publishes no `karaoke.mp4`, skips frame/Vision QC and records

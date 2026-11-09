@@ -77,6 +77,7 @@ def write_ass(
     destination: Path,
     *,
     canvas: tuple[int, int] = LANDSCAPE_CANVAS,
+    progressive: bool = True,
 ) -> None:
     width, height = canvas
     header = f"""[Script Info]
@@ -95,15 +96,17 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 """
     events = []
     for line in lines:
-        if line.highlight_spans:
+        if progressive and line.highlight_spans:
             text = "".join(
                 f"{{\\kf{max(1, round((span.end - span.start) * 100))}}}"
                 f"{_ass_escape(span.text)}"
                 for span in line.highlight_spans
             )
-        else:
+        elif progressive:
             duration_cs = max(1, round((line.end - line.start) * 100))
             text = f"{{\\kf{duration_cs}}}{_ass_escape(line.text)}"
+        else:
+            text = _ass_escape(line.text)
         events.append(
             f"Dialogue: 0,{_ass_time(line.start)},{_ass_time(line.end)},Karaoke,,0,0,0,,"
             f"{text}"
