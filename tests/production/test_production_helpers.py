@@ -253,3 +253,28 @@ def test_transcript_segment_preserves_word_timing_evidence():
     assert segment.words[0].start == 10.2
     assert segment.words[0].end == 13.8
     assert segment.words[0].probability == 0.91
+
+
+def test_word_evidence_creates_multiple_ass_highlight_spans(tmp_path: Path):
+    transcript = (
+        TranscriptSegment(
+            10.0,
+            16.0,
+            "อยู่ ด้วยกัน นาน นะ",
+            (
+                TranscriptWord(10.0, 11.0, "อยู่", 0.9),
+                TranscriptWord(11.0, 12.0, "ด้วยกัน", 0.9),
+                TranscriptWord(12.0, 13.0, "นาน", 0.9),
+                TranscriptWord(13.0, 16.0, "นะ", 0.9),
+            ),
+        ),
+    )
+    line = propose_timing(("อยู่ ด้วยกัน นาน นะ",), transcript)[0]
+    destination = tmp_path / "multi.ass"
+
+    write_ass((line,), destination)
+
+    content = destination.read_text(encoding="utf-8-sig")
+    assert len(line.highlight_spans) == 4
+    assert line.highlight_spans[-1].sustained is True
+    assert content.count(r"{\kf") == 4

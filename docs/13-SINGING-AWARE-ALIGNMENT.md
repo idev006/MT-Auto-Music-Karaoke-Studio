@@ -44,3 +44,5 @@ Provisional experimental targets—not achieved claims—are phrase onset MAE <=
 ## Current evidence
 
 The `อยู่เป็นเพื่อนกันนาน ๆ นะ v9` candidate spans most of the song after global sequence alignment, but strict validation blocks it: four phrases are about 0.10–0.145 s, two exceed 12 s and one pair overlaps by 0.086 s. This candidate is not synchronized or publishable even when OpenRouter confirms the rendered text.
+
+Implementation now retains faster-whisper word timestamps/probabilities and can render multiple ASS `\\kf` spans for whitespace-delimited lyric tokens. The final token holds through the phrase end and is marked sustained when its evidence-backed duration is materially longer than the typical token. This removes the one-tag renderer limitation, but it remains `REVIEW_REQUIRED` until Thai syllable segmentation and voiced-tail DSP are benchmarked.

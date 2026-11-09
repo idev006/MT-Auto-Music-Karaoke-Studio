@@ -95,11 +95,18 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 """
     events = []
     for line in lines:
-        duration_cs = max(1, round((line.end - line.start) * 100))
-        text = _ass_escape(line.text)
+        if line.highlight_spans:
+            text = "".join(
+                f"{{\\kf{max(1, round((span.end - span.start) * 100))}}}"
+                f"{_ass_escape(span.text)}"
+                for span in line.highlight_spans
+            )
+        else:
+            duration_cs = max(1, round((line.end - line.start) * 100))
+            text = f"{{\\kf{duration_cs}}}{_ass_escape(line.text)}"
         events.append(
             f"Dialogue: 0,{_ass_time(line.start)},{_ass_time(line.end)},Karaoke,,0,0,0,,"
-            f"{{\\kf{duration_cs}}}{text}"
+            f"{text}"
         )
     destination.write_text(header + "\n".join(events) + "\n", encoding="utf-8-sig")
 
