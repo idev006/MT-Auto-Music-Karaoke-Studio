@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from mt_engine.production import produce_song
+from mt_engine.production.openrouter_vision import rerun_vision_qc
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -24,6 +25,13 @@ def _parser() -> argparse.ArgumentParser:
     produce.add_argument("--single-image-for-both", action="store_true")
     produce.add_argument("--accept-unreviewed-timing", action="store_true")
     produce.add_argument(
+        "--openrouter-config", type=Path, default=Path("config/openrouter.env")
+    )
+    vision = commands.add_parser(
+        "vision-qc", help="Rerun OpenRouter Vision QC for an existing target"
+    )
+    vision.add_argument("--target", type=Path, required=True)
+    vision.add_argument(
         "--openrouter-config", type=Path, default=Path("config/openrouter.env")
     )
     return parser
@@ -62,6 +70,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 indent=2,
             )
         )
+        return 0
+    if args.command == "vision-qc":
+        result = rerun_vision_qc(args.target.resolve(), args.openrouter_config.resolve())
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     return 2
 

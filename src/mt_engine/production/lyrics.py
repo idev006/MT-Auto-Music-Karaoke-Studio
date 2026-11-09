@@ -13,10 +13,19 @@ from mutagen.id3 import ID3
 
 
 @dataclass(frozen=True, slots=True)
+class TranscriptWord:
+    start: float
+    end: float
+    text: str
+    probability: float
+
+
+@dataclass(frozen=True, slots=True)
 class TranscriptSegment:
     start: float
     end: float
     text: str
+    words: tuple[TranscriptWord, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,7 +76,21 @@ def transcribe(
         initial_prompt=" ".join(canonical_lyrics)[:1000],
     )
     materialized = tuple(
-        TranscriptSegment(float(segment.start), float(segment.end), segment.text.strip())
+        TranscriptSegment(
+            float(segment.start),
+            float(segment.end),
+            segment.text.strip(),
+            tuple(
+                TranscriptWord(
+                    float(word.start),
+                    float(word.end),
+                    word.word.strip(),
+                    float(word.probability),
+                )
+                for word in (segment.words or ())
+                if word.word.strip()
+            ),
+        )
         for segment in segments
         if segment.text.strip()
     )
@@ -133,22 +156,8 @@ def _text_aligned_timing(
 ) -> tuple[TimedLine, ...] | None:
     """Anchor canonical lines to monotonic ASR segments, then fill only gaps."""
     anchors: dict[int, tuple[float, float]] = {}
-    cursor = 0
-    for segment in transcript:
-        segment_text = _normalize(segment.text)
-        if not segment_text or cursor >= len(lyrics):
-            continue
-        best: tuple[float, int, int] | None = None
-        for start_index in range(cursor, len(lyrics)):
-            for group_size in range(1, min(3, len(lyrics) - start_index) + 1):
-                candidate = _normalize("".join(lyrics[start_index : start_index + group_size]))
-                similarity = SequenceMatcher(None, candidate, segment_text, autojunk=False).ratio()
-                score = similarity - (start_index - cursor) * 0.008
-                if best is None or score > best[0]:
-                    best = (score, start_index, group_size)
-        if best is None or best[0] < 0.24:
-            continue
-        _, start_index, group_size = best
+    for start_index, group_size, segment_index in _global_anchor_matches(lyrics, transcript):
+        segment = transcript[segment_index]
         group = lyrics[start_index : start_index + group_size]
         weights = [max(1, len(_normalize(line))) for line in group]
         total = sum(weights)
@@ -161,7 +170,6 @@ def _text_aligned_timing(
             )
             anchors[start_index + offset] = (position, line_end)
             position = line_end
-        cursor = start_index + group_size
 
     if len(anchors) < max(2, len(lyrics) // 5):
         return None
@@ -200,3 +208,85 @@ def _text_aligned_timing(
             timings[index] = timing
 
     return tuple(timing for timing in timings if timing is not None)
+
+
+def _global_anchor_matches(
+    lyrics: tuple[str, ...], transcript: tuple[TranscriptSegment, ...]
+) -> tuple[tuple[int, int, int], ...]:
+    """Globally align ordered lyric groups to ordered ASR segments.
+
+    Dynamic programming prevents repeated lyrics from greedily consuming every
+    canonical line near the beginning of a song.
+    """
+    lyric_count = len(lyrics)
+    segment_count = len(transcript)
+    negative_infinity = float("-inf")
+    scores = [
+        [negative_infinity] * (segment_count + 1) for _ in range(lyric_count + 1)
+    ]
+    previous: dict[tuple[int, int], tuple[int, int, tuple[str, int] | None]] = {}
+    scores[0][0] = 0.0
+
+    def update(
+        next_i: int,
+        next_j: int,
+        score: float,
+        prior_i: int,
+        prior_j: int,
+        action: tuple[str, int] | None,
+    ) -> None:
+        if score > scores[next_i][next_j]:
+            scores[next_i][next_j] = score
+            previous[(next_i, next_j)] = (prior_i, prior_j, action)
+
+    for lyric_index in range(lyric_count + 1):
+        for segment_index in range(segment_count + 1):
+            current = scores[lyric_index][segment_index]
+            if current == negative_infinity:
+                continue
+            if lyric_index < lyric_count:
+                update(
+                    lyric_index + 1,
+                    segment_index,
+                    current - 0.4,
+                    lyric_index,
+                    segment_index,
+                    None,
+                )
+            if segment_index < segment_count:
+                update(
+                    lyric_index,
+                    segment_index + 1,
+                    current - 0.08,
+                    lyric_index,
+                    segment_index,
+                    None,
+                )
+            if lyric_index < lyric_count and segment_index < segment_count:
+                segment_text = _normalize(transcript[segment_index].text)
+                for group_size in range(1, min(3, lyric_count - lyric_index) + 1):
+                    candidate = _normalize(
+                        "".join(lyrics[lyric_index : lyric_index + group_size])
+                    )
+                    similarity = SequenceMatcher(
+                        None, candidate, segment_text, autojunk=False
+                    ).ratio()
+                    if similarity < 0.24:
+                        continue
+                    update(
+                        lyric_index + group_size,
+                        segment_index + 1,
+                        current + similarity * 3 + group_size * 0.1,
+                        lyric_index,
+                        segment_index,
+                        ("match", group_size),
+                    )
+
+    matches = []
+    state = (lyric_count, segment_count)
+    while state != (0, 0):
+        prior_i, prior_j, action = previous[state]
+        if action is not None and action[0] == "match":
+            matches.append((prior_i, action[1], prior_j))
+        state = (prior_i, prior_j)
+    return tuple(reversed(matches))

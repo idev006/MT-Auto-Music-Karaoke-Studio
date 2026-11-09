@@ -17,6 +17,7 @@ from .lyrics import extract_lyrics, propose_timing, transcribe
 from .media import embed_cover, run_ffmpeg_render, sha256_file, video_canvas, write_ass
 from .openrouter_vision import OpenRouterVisionConfig, inspect_samples
 from .qc import build_alignment_checks, extract_qc_frames, select_frame_samples
+from .timing_domain import validate_timeline
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,7 +89,8 @@ def produce_song(
     events_path = staging / "events.jsonl"
 
     source_hash_before = sha256_file(assets.mp3)
-    image_hash = sha256_file(assets.image)
+    cover_hash = sha256_file(assets.cover)
+    background_hash = sha256_file(assets.background)
     started_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
     events_path.write_text(
         json.dumps({"event": "job_run.started", "run_id": run_id, "at": started_at}) + "\n",
@@ -96,11 +98,11 @@ def produce_song(
     )
 
     staged_mp3 = staging / "song_with_cover.mp3"
-    mp3_qc = embed_cover(assets.mp3, assets.image, staged_mp3)
+    mp3_qc = embed_cover(assets.mp3, assets.cover, staged_mp3)
     mp3_qc["audio_frames_unchanged"] = (
         mp3_qc["source_audio_payload_sha256"] == mp3_qc["output_audio_payload_sha256"]
     )
-    mp3_qc["cover_matches_input"] = mp3_qc["cover_sha256"] == image_hash
+    mp3_qc["cover_matches_input"] = mp3_qc["cover_sha256"] == cover_hash
     if not mp3_qc["audio_frames_unchanged"] or not mp3_qc["cover_matches_input"]:
         raise RuntimeError("MP3 integrity verification failed")
 
@@ -116,14 +118,15 @@ def produce_song(
     asr_window_duration = transcript[-1].end - transcript[0].start
     full_song_fallback_used = asr_window_duration < audio_duration * 0.35
     timing = propose_timing(lyric_lines, transcript, audio_duration=audio_duration)
-    canvas = video_canvas(assets.image)
+    timeline_validation = validate_timeline(timing)
+    canvas = video_canvas(assets.background)
     ass_path = staging / "karaoke.ass"
     write_ass(timing, ass_path, canvas=canvas)
     staged_mp4 = staging / "karaoke.mp4"
     video_probe = run_ffmpeg_render(
         ffmpeg,
         ffprobe,
-        image=assets.image,
+        image=assets.background,
         audio=assets.mp3,
         ass_path=ass_path,
         destination=staged_mp4,
@@ -188,6 +191,7 @@ def produce_song(
             "review_required": True,
             "accepted_for_test_only": True,
             "measured_alignment_kpi": False,
+            "structural_validation": timeline_validation.to_primitive(),
         },
         "karaoke_sampling_qc": {
             "status": "REVIEW_REQUIRED",
@@ -208,14 +212,22 @@ def produce_song(
         "schema_version": 1,
         "job_id": job_id,
         "run_id": run_id,
-        "state": "SUCCEEDED_WITH_TEST_TIMING_OVERRIDE",
+        "state": (
+            "BLOCKED_TIMING_VALIDATION"
+            if timeline_validation.status == "BLOCKED"
+            else "SUCCEEDED_WITH_REVIEW_REQUIRED"
+        ),
         "source": {
             "folder": str(assets.source_dir),
             "mp3": assets.mp3.name,
             "mp3_sha256": source_hash_before,
-            "image": assets.image.name,
-            "image_sha256": image_hash,
-            "single_image_explicitly_mapped_to_both_roles": True,
+            "cover": assets.cover.name,
+            "cover_sha256": cover_hash,
+            "background": assets.background.name,
+            "background_sha256": background_hash,
+            "single_image_explicitly_mapped_to_both_roles": (
+                assets.cover == assets.background
+            ),
         },
         "outputs": {
             "mp3": {"path": final_mp3.name, "sha256": sha256_file(final_mp3)},

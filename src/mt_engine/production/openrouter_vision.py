@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ class OpenRouterVisionConfig:
     frame_count: int = 12
     timeout_seconds: int = 90
     app_name: str = "MT Auto Music Karaoke Studio"
+    retry_attempts: int = 3
 
     @classmethod
     def from_file(cls, path: Path) -> OpenRouterVisionConfig:
@@ -61,6 +63,7 @@ class OpenRouterVisionConfig:
             frame_count=frame_count,
             timeout_seconds=int(setting("OPENROUTER_TIMEOUT_SECONDS", "90")),
             app_name=setting("OPENROUTER_APP_NAME", "MT Auto Music Karaoke Studio"),
+            retry_attempts=int(setting("OPENROUTER_RETRY_ATTEMPTS", "3")),
         )
 
 
@@ -130,20 +133,46 @@ def inspect_samples(
         return {"status": "NOT_CONFIGURED", "results": []}
     results = []
     for sample in samples:
-        try:
-            result = inspect_frame(
-                config,
-                frame_directory / str(sample["frame"]),
-                str(sample["expected_text"]),
-            )
-            results.append({"frame": sample["frame"], **result})
-        except (OSError, TimeoutError, KeyError, ValueError) as error:
+        last_error: Exception | None = None
+        for attempt in range(config.retry_attempts):
+            try:
+                result = inspect_frame(
+                    config,
+                    frame_directory / str(sample["frame"]),
+                    str(sample["expected_text"]),
+                )
+                results.append({"frame": sample["frame"], **result})
+                break
+            except (OSError, TimeoutError, KeyError, ValueError) as error:
+                last_error = error
+                if attempt + 1 < config.retry_attempts:
+                    time.sleep(2**attempt)
+        else:
             results.append(
                 {
                     "frame": sample["frame"],
                     "matches_expected": None,
-                    "error": f"{type(error).__name__}: {error}",
+                    "error": f"{type(last_error).__name__}: {last_error}",
                 }
             )
     passed = results and all(item.get("matches_expected") is True for item in results)
     return {"status": "PASS" if passed else "REVIEW_REQUIRED", "results": results}
+
+
+def rerun_vision_qc(target_dir: Path, config_path: Path) -> dict[str, object]:
+    report_path = target_dir / "production_data" / "qc_report.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    sampling = report["karaoke_sampling_qc"]
+    samples = tuple(sampling["samples"])
+    result = inspect_samples(
+        OpenRouterVisionConfig.from_file(config_path),
+        target_dir / "production_data" / "qc_frames",
+        samples,
+    )
+    sampling["openrouter_vision_qc"] = result
+    temporary = report_path.with_suffix(".json.partial")
+    temporary.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    temporary.replace(report_path)
+    return result

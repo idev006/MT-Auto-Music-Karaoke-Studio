@@ -14,6 +14,7 @@ def test_openrouter_config_is_disabled_without_local_file(tmp_path: Path):
 
     assert config.enabled is False
     assert config.frame_count == 12
+    assert config.retry_attempts == 3
 
 
 def test_openrouter_enabled_requires_key(tmp_path: Path):

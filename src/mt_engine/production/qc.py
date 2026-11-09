@@ -72,17 +72,20 @@ def select_frame_samples(
         checks,
         key=lambda check: (check.status == "PASS", check.similarity, check.line_index),
     )[:risky_count]
+    stratified_count = count - risky_count
     stratified = [
-        checks[round(position * (len(checks) - 1) / max(1, count - 1))]
-        for position in range(count)
+        checks[round(position * (len(checks) - 1) / max(1, stratified_count - 1))]
+        for position in range(stratified_count)
     ]
     selected = {check.line_index: check for check in risky}
     for check in stratified:
-        if len(selected) >= count:
-            break
         selected.setdefault(check.line_index, check)
     if len(selected) < count:
-        for check in checks:
+        broader_stratified = [
+            checks[round(position * (len(checks) - 1) / max(1, count * 2 - 1))]
+            for position in range(count * 2)
+        ]
+        for check in broader_stratified:
             selected.setdefault(check.line_index, check)
             if len(selected) >= count:
                 break

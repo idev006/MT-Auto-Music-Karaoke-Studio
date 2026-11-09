@@ -14,7 +14,8 @@ class IntakeError(ValueError):
 class SongAssets:
     source_dir: Path
     mp3: Path
-    image: Path
+    cover: Path
+    background: Path
 
 
 def discover_song(source_dir: Path, *, single_image_for_both: bool) -> SongAssets:
@@ -29,10 +30,25 @@ def discover_song(source_dir: Path, *, single_image_for_both: bool) -> SongAsset
     )
     if len(mp3_files) != 1:
         raise IntakeError(f"Expected exactly 1 MP3, found {len(mp3_files)}")
-    if len(image_files) != 1:
-        raise IntakeError(f"Expected exactly 1 image, found {len(image_files)}")
-    if not single_image_for_both:
-        raise IntakeError(
-            "One image cannot be assigned to cover and video background without explicit mapping"
-        )
-    return SongAssets(source_dir, mp3_files[0].resolve(), image_files[0].resolve())
+    if len(image_files) == 1:
+        if not single_image_for_both:
+            raise IntakeError(
+                "One image cannot be assigned to cover and video background without explicit mapping"
+            )
+        cover = background = image_files[0]
+    elif len(image_files) == 2:
+        cover_candidates = [path for path in image_files if path.stem.casefold() == "cover"]
+        if len(cover_candidates) != 1:
+            raise IntakeError(
+                "Two-image input requires exactly one file named cover.<extension>"
+            )
+        cover = cover_candidates[0]
+        background = next(path for path in image_files if path != cover)
+    else:
+        raise IntakeError(f"Expected 1 or 2 images, found {len(image_files)}")
+    return SongAssets(
+        source_dir,
+        mp3_files[0].resolve(),
+        cover.resolve(),
+        background.resolve(),
+    )

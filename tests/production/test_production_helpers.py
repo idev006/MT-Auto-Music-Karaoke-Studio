@@ -5,9 +5,15 @@ import pytest
 from PIL import Image
 
 from mt_engine.production.intake import IntakeError, discover_song
-from mt_engine.production.lyrics import TimedLine, TranscriptSegment, propose_timing
+from mt_engine.production.lyrics import (
+    TimedLine,
+    TranscriptSegment,
+    TranscriptWord,
+    propose_timing,
+)
 from mt_engine.production.media import LANDSCAPE_CANVAS, PORTRAIT_CANVAS, video_canvas, write_ass
 from mt_engine.production.qc import build_alignment_checks, select_frame_samples
+from mt_engine.production.timing_domain import validate_timeline
 
 
 def test_discovery_requires_explicit_single_image_dual_role(tmp_path: Path):
@@ -19,7 +25,19 @@ def test_discovery_requires_explicit_single_image_dual_role(tmp_path: Path):
 
     assets = discover_song(tmp_path, single_image_for_both=True)
     assert assets.mp3.name == "song.mp3"
-    assert assets.image.name == "image.png"
+    assert assets.cover.name == "image.png"
+    assert assets.background.name == "image.png"
+
+
+def test_discovery_maps_named_cover_and_remaining_background(tmp_path: Path):
+    (tmp_path / "song.mp3").write_bytes(b"mp3")
+    (tmp_path / "cover.png").write_bytes(b"cover")
+    (tmp_path / "scene.png").write_bytes(b"background")
+
+    assets = discover_song(tmp_path, single_image_for_both=False)
+
+    assert assets.cover.name == "cover.png"
+    assert assets.background.name == "scene.png"
 
 
 def test_discovery_rejects_ambiguous_mp3s(tmp_path: Path):
@@ -102,6 +120,22 @@ def test_text_alignment_does_not_overlap_unrecognized_adlib_with_next_anchor():
     assert timing[1].end <= timing[2].start
 
 
+def test_global_alignment_does_not_consume_repeated_lyrics_near_song_start():
+    lyrics = ("หนึ่ง", "สอง", "สาม", "หนึ่ง", "สอง", "สาม")
+    transcript = (
+        TranscriptSegment(10.0, 15.0, "หนึ่ง"),
+        TranscriptSegment(16.0, 21.0, "สอง"),
+        TranscriptSegment(100.0, 105.0, "หนึ่ง"),
+        TranscriptSegment(106.0, 111.0, "สอง"),
+        TranscriptSegment(112.0, 117.0, "สาม"),
+    )
+
+    timing = propose_timing(lyrics, transcript, audio_duration=130.0)
+
+    assert timing[3].start == 100.0
+    assert timing[-1].end == 117.0
+
+
 def test_ass_generation_escapes_override_syntax(tmp_path: Path):
     timing = propose_timing(
         (r"ข้อความ {อันตราย} \N",),
@@ -180,3 +214,42 @@ def test_qc_selects_twelve_frames_and_prioritizes_low_confidence():
 
     assert len(samples) == 12
     assert any(sample.line_index == 9 for sample in samples)
+    assert samples[0].line_index == 0
+    assert samples[-1].line_index == 19
+
+
+def test_timeline_validator_blocks_short_and_overlapping_phrases():
+    timing = (
+        TimedLine(1.0, 1.2, "สั้นเกินไป"),
+        TimedLine(1.1, 3.0, "ซ้อนกัน"),
+        TimedLine(3.0, 16.0, "ยาวเกินไป"),
+    )
+
+    validation = validate_timeline(timing)
+
+    assert validation.status == "BLOCKED"
+    assert {finding.code for finding in validation.findings} == {
+        "PHRASE_TOO_SHORT", "PHRASE_OVERLAP", "PHRASE_TOO_LONG"
+    }
+
+
+def test_timeline_validator_accepts_plausible_non_overlapping_phrases():
+    validation = validate_timeline(
+        (TimedLine(1.0, 3.0, "หนึ่ง"), TimedLine(3.2, 6.0, "สอง"))
+    )
+
+    assert validation.status == "PASS"
+    assert validation.findings == ()
+
+
+def test_transcript_segment_preserves_word_timing_evidence():
+    segment = TranscriptSegment(
+        10.0,
+        14.0,
+        "หวานหวาน",
+        (TranscriptWord(10.2, 13.8, "หวานหวาน", 0.91),),
+    )
+
+    assert segment.words[0].start == 10.2
+    assert segment.words[0].end == 13.8
+    assert segment.words[0].probability == 0.91
