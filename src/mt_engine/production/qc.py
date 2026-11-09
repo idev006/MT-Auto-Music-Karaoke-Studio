@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import statistics
 import subprocess
 import unicodedata
 from dataclasses import asdict, dataclass
@@ -59,6 +60,68 @@ def build_alignment_checks(
             )
         )
     return tuple(checks)
+
+
+def build_timing_diagnostics(
+    timing: tuple[TimedLine, ...],
+    transcript: tuple[TranscriptSegment, ...],
+    *,
+    audio_duration: float,
+) -> dict[str, object]:
+    """Summarize evidence quality without claiming synchronization accuracy."""
+    checks = build_alignment_checks(timing, transcript)
+    durations = [line.end - line.start for line in timing]
+    rates = [
+        sum(character.isalnum() for character in line.text) / duration
+        if duration > 0
+        else float("inf")
+        for line, duration in zip(timing, durations, strict=True)
+    ]
+    timestamp_tokens = [word for segment in transcript for word in segment.words]
+    asr_window = transcript[-1].end - transcript[0].start if transcript else 0.0
+    single_character_tokens = sum(len(word.text) == 1 for word in timestamp_tokens)
+    return {
+        "schema_version": 1,
+        "scope": "diagnostic_evidence_not_sync_certification",
+        "audio_duration_seconds": audio_duration,
+        "asr_window_seconds": asr_window,
+        "asr_window_ratio": round(asr_window / audio_duration, 4) if audio_duration else 0.0,
+        "transcript_segment_count": len(transcript),
+        "timestamp_token_count": len(timestamp_tokens),
+        "single_character_timestamp_token_ratio": (
+            round(single_character_tokens / len(timestamp_tokens), 4)
+            if timestamp_tokens
+            else 0.0
+        ),
+        "line_count": len(timing),
+        "lines_with_progressive_spans": sum(bool(line.highlight_spans) for line in timing),
+        "lines_without_progressive_spans": sum(not line.highlight_spans for line in timing),
+        "alignment_pass_count": sum(check.status == "PASS" for check in checks),
+        "alignment_review_count": sum(check.status != "PASS" for check in checks),
+        "duration_seconds": {
+            "minimum": min(durations) if durations else None,
+            "median": statistics.median(durations) if durations else None,
+            "maximum": max(durations) if durations else None,
+        },
+        "normalized_character_rate_per_second": {
+            "median": statistics.median(rates) if rates else None,
+            "maximum": max(rates) if rates else None,
+        },
+        "suspect_initial_segment": (
+            {
+                "start": transcript[0].start,
+                "end": transcript[0].end,
+                "text": transcript[0].text,
+                "duration_seconds": transcript[0].end - transcript[0].start,
+            }
+            if transcript and transcript[0].start <= 0.1 and transcript[0].end >= 10.0
+            else None
+        ),
+        "lowest_similarity_lines": [
+            asdict(check)
+            for check in sorted(checks, key=lambda item: item.similarity)[:12]
+        ],
+    }
 
 
 def select_frame_samples(

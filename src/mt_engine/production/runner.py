@@ -16,7 +16,12 @@ from .intake import discover_song
 from .lyrics import extract_lyrics, propose_timing, transcribe
 from .media import embed_cover, run_ffmpeg_render, sha256_file, video_canvas, write_ass
 from .openrouter_vision import OpenRouterVisionConfig, inspect_samples
-from .qc import build_alignment_checks, extract_qc_frames, select_frame_samples
+from .qc import (
+    build_alignment_checks,
+    build_timing_diagnostics,
+    extract_qc_frames,
+    select_frame_samples,
+)
 from .timing_domain import validate_timeline
 
 
@@ -137,6 +142,10 @@ def produce_song(
         "transcript_evidence": [asdict(segment) for segment in transcript],
     }
     _write_json(production_data / "timing.json", timing_payload)
+    _write_json(
+        production_data / "diagnostics.json",
+        build_timing_diagnostics(timing, transcript, audio_duration=audio_duration),
+    )
 
     if timeline_validation.status == "BLOCKED":
         source_hash_after = sha256_file(assets.mp3)

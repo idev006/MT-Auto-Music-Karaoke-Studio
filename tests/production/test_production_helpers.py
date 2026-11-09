@@ -12,7 +12,11 @@ from mt_engine.production.lyrics import (
     propose_timing,
 )
 from mt_engine.production.media import LANDSCAPE_CANVAS, PORTRAIT_CANVAS, video_canvas, write_ass
-from mt_engine.production.qc import build_alignment_checks, select_frame_samples
+from mt_engine.production.qc import (
+    build_alignment_checks,
+    build_timing_diagnostics,
+    select_frame_samples,
+)
 from mt_engine.production.timing_domain import validate_timeline
 
 
@@ -250,6 +254,27 @@ def test_timeline_validator_blocks_implausibly_compressed_lyrics():
 
     assert validation.status == "BLOCKED"
     assert "IMPLAUSIBLE_LYRIC_RATE" in {finding.code for finding in validation.findings}
+
+
+def test_timing_diagnostics_flags_long_initial_asr_hallucination():
+    timing = (TimedLine(20.0, 23.0, "เนื้อเพลง"),)
+    transcript = (
+        TranscriptSegment(
+            0.0,
+            20.0,
+            "คำซ้ำ คำซ้ำ",
+            (
+                TranscriptWord(0.0, 10.0, "ค", 0.1),
+                TranscriptWord(10.0, 20.0, "ำ", 0.1),
+            ),
+        ),
+    )
+
+    diagnostics = build_timing_diagnostics(timing, transcript, audio_duration=60.0)
+
+    assert diagnostics["suspect_initial_segment"]["duration_seconds"] == 20.0
+    assert diagnostics["single_character_timestamp_token_ratio"] == 1.0
+    assert diagnostics["scope"] == "diagnostic_evidence_not_sync_certification"
 
 
 def test_transcript_segment_preserves_word_timing_evidence():
