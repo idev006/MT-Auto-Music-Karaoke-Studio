@@ -323,10 +323,22 @@ def _global_anchor_matches(
                     candidate = _normalize(
                         "".join(lyrics[lyric_index : lyric_index + group_size])
                     )
+                    # A fuzzy text match is not timing evidence when Whisper has
+                    # squeezed several lyric lines into a very short segment.
+                    # Thai singing commonly arrives as grapheme-sized timestamp
+                    # tokens, so guard the phrase duration independently of the
+                    # token count before accepting an anchor.
+                    segment_duration = transcript[segment_index].end - transcript[segment_index].start
+                    minimum_plausible_duration = max(
+                        0.7 * group_size,
+                        0.04 * len(candidate),
+                    )
+                    if segment_duration < minimum_plausible_duration:
+                        continue
                     similarity = SequenceMatcher(
                         None, candidate, segment_text, autojunk=False
                     ).ratio()
-                    if similarity < 0.24:
+                    if similarity < 0.45:
                         continue
                     update(
                         lyric_index + group_size,

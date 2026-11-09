@@ -229,7 +229,8 @@ def test_timeline_validator_blocks_short_and_overlapping_phrases():
 
     assert validation.status == "BLOCKED"
     assert {finding.code for finding in validation.findings} == {
-        "PHRASE_TOO_SHORT", "PHRASE_OVERLAP", "PHRASE_TOO_LONG"
+        "PHRASE_TOO_SHORT", "PHRASE_OVERLAP", "PHRASE_TOO_LONG",
+        "IMPLAUSIBLE_LYRIC_RATE",
     }
 
 
@@ -240,6 +241,15 @@ def test_timeline_validator_accepts_plausible_non_overlapping_phrases():
 
     assert validation.status == "PASS"
     assert validation.findings == ()
+
+
+def test_timeline_validator_blocks_implausibly_compressed_lyrics():
+    validation = validate_timeline(
+        (TimedLine(10.0, 10.6, "ผ่านคืนผ่านวัน มีเธออยู่ข้างกาย"),)
+    )
+
+    assert validation.status == "BLOCKED"
+    assert "IMPLAUSIBLE_LYRIC_RATE" in {finding.code for finding in validation.findings}
 
 
 def test_transcript_segment_preserves_word_timing_evidence():
