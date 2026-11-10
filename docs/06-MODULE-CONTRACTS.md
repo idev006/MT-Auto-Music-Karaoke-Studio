@@ -15,6 +15,7 @@ Only application/orchestrator coordinates modules. Domain code imports no Qt, FF
 | TimingReview | candidate + corrections + expected revision | approved TimingRevision | conflict/rejection |
 | Artwork | MP3 locator, cover locator, metadata policy | staged MP3, verification report | invalid tag/frame mismatch |
 | PresetResolver | id, version, overrides, renderer capability | effective KaraokeDisplayObject | unsupported feature |
+| LayoutCoordinator | canvas snapshot, virtual-block tree, collision policy | local/absolute resolved layout | cycle/overflow/collision |
 | SubtitleRenderer | timeline, object, image dimensions | ASS/SRT + reference frames | overflow/font absent |
 | VideoRenderer | background, MP3, ASS, profile | staged MP4 + media info | FFmpeg failure/resource |
 | QA | staged artifact, expected invariants | signed/traceable QCResult | rejected artifact |

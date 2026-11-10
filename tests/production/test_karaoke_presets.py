@@ -145,6 +145,13 @@ def test_virtual_box_uses_configurable_pixel_margins_and_padding(tmp_path: Path)
     assert virtual_box["top_pixels"] == 1450
     assert evidence["safe_width_pixels"] == 996
     assert evidence["safe_height_pixels"] == 412
+    tree = virtual_box["layout_tree"]
+    assert tree["region_block_id"] == "karaoke-region"
+    assert tree["content_block_id"] == "karaoke-text-content"
+    assert tree["content_local_x_pixels"] == 32
+    assert tree["content_local_y_pixels"] == 24
+    assert tree["content_absolute_x_pixels"] == 42
+    assert tree["content_absolute_y_pixels"] == 1474
 
 
 def test_each_message_selects_its_own_largest_fitting_font(tmp_path: Path):

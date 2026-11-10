@@ -40,7 +40,7 @@ Use normalized geometry 0–1 with explicit reference coordinate rules. SSOT ret
 The renderer currently ships 12 immutable presets across six groups: Classic (`classic-gold`,
 `classic-blue`), Modern (`modern-minimal`, `glass-caption`), Neon (`neon-pink`, `neon-blue`),
 Romantic (`romantic-rose`, `sunset-love`), Fun (`candy-pop`, `festival-bold`) and Accessible
-(`maximum-contrast`, `dark-caption-bar`). Each preset has schema version 1 and a deterministic
+(`maximum-contrast`, `dark-caption-bar`). Each preset has schema version 2 and a deterministic
 content SHA-256 recorded in the run manifest. `list-presets` exposes the catalog and
 `produce-song --karaoke-preset <preset-id>` selects one without changing canonical lyrics or any
 timeline field. The remaining target catalog is backlog and must be released only with Thai
@@ -73,6 +73,19 @@ one-line and balanced two-line candidates, enforces the allowed text-height rati
 no candidate remains above the preset minimum. Preview manifests record the chosen font size,
 display text/line count, safe width, canvas and measurement method for every preset; no global
 song-level font size is imposed.
+
+## Composable virtual-block layout
+
+Canvas geometry is resolved by a central `LayoutCoordinator`. A virtual block is both an atomic
+layout item, comparable to a glyph with intrinsic dimensions, and an optional container of child
+blocks. Blocks form a strict tree: each block has at most one parent, IDs are unique and parent
+cycles are rejected. Stored positions are parent-local; absolute positions are derived evidence.
+
+Parent padding defines its child content area. Children may use absolute, vertical-stack or
+horizontal-stack layout with deterministic `order`, margins and gaps. Overflow is fail-closed by
+default. Top-level collision groups remain coordinator-owned; children never inspect or mutate
+siblings. This supports the hierarchy Canvas -> Karaoke Region -> Lyric Line -> Word/Highlight
+without coupling typography to the video renderer.
 
 ## Creative ownership
 Creative Director sets style; Music Video Director sets motion/emotional intent; Motion Designer and Thai Typography Specialist specify look/readability; Rendering Engineer verifies engine parity; QA approves test renders. These are design responsibilities, not claims of hired staff.

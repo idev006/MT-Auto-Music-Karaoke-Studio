@@ -6,7 +6,14 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 
-from .layout import CanvasLayoutContext, LayoutCoordinator, VirtualBoxSpec
+from .layout import (
+    CanvasLayoutContext,
+    ComposableBlockSpec,
+    Insets,
+    LayoutCoordinator,
+    ResolvedBlock,
+    VirtualBoxSpec,
+)
 
 DEFAULT_FONT_FILE = "THSarabun Bold.ttf"
 DEFAULT_FONT_FAMILY = "TH SarabunPSK"
@@ -107,6 +114,41 @@ class KaraokeVisualPreset:
         )
         box = placed[0]
         return box.left, box.top, box.width, box.height
+
+    def block_tree_for(self, canvas: tuple[int, int]) -> tuple[ResolvedBlock, ResolvedBlock]:
+        """Resolve the karaoke region and its text-content child block."""
+        left, top, width, height = self.virtual_box_for(canvas)
+        content_height = (
+            height
+            - self.virtual_box_padding_top_pixels
+            - self.virtual_box_padding_bottom_pixels
+        )
+        coordinator = LayoutCoordinator(CanvasLayoutContext(*canvas))
+        region, content = coordinator.compose(
+            (
+                ComposableBlockSpec(
+                    "karaoke-region",
+                    None,
+                    width,
+                    height,
+                    local_x=left,
+                    local_y=top,
+                    padding=Insets(
+                        self.virtual_box_padding_left_pixels,
+                        self.virtual_box_padding_right_pixels,
+                        self.virtual_box_padding_top_pixels,
+                        self.virtual_box_padding_bottom_pixels,
+                    ),
+                ),
+                ComposableBlockSpec(
+                    "karaoke-text-content",
+                    "karaoke-region",
+                    None,
+                    content_height,
+                ),
+            )
+        )
+        return region, content
 
     def ass_style(self, canvas: tuple[int, int] = (1920, 1080)) -> str:
         return (

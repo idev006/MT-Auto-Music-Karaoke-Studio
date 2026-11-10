@@ -176,19 +176,9 @@ def _layout_plain_text(
     font_path: Path | None = None,
 ) -> tuple[str, int, float, float]:
     """Maximize each lyric event independently using shaped font measurements."""
-    _left, _top, box_width, box_height = preset.virtual_box_for(canvas)
-    safe_width = max(
-        1,
-        box_width
-        - preset.virtual_box_padding_left_pixels
-        - preset.virtual_box_padding_right_pixels,
-    )
-    allowed_height = max(
-        1,
-        box_height
-        - preset.virtual_box_padding_top_pixels
-        - preset.virtual_box_padding_bottom_pixels,
-    )
+    _region, content_block = preset.block_tree_for(canvas)
+    safe_width = content_block.width
+    allowed_height = content_block.height
     boundaries = [index for index, character in enumerate(text) if character.isspace()]
 
     def metrics(value: str, size: int) -> tuple[float, float]:
@@ -283,19 +273,13 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 f"{{\\fs{display_font_size}}}"
             )
             text = size_override + _ass_escape(display_text)
-        virtual_left, virtual_top, virtual_width, virtual_height = (
-            selected_preset.virtual_box_for(canvas)
-        )
-        content_width = (
-            virtual_width
-            - selected_preset.virtual_box_padding_left_pixels
-            - selected_preset.virtual_box_padding_right_pixels
-        )
-        content_height = (
-            virtual_height
-            - selected_preset.virtual_box_padding_top_pixels
-            - selected_preset.virtual_box_padding_bottom_pixels
-        )
+        region_block, content_block = selected_preset.block_tree_for(canvas)
+        virtual_left = region_block.absolute_x
+        virtual_top = region_block.absolute_y
+        virtual_width = region_block.width
+        virtual_height = region_block.height
+        content_width = content_block.width
+        content_height = content_block.height
         box_width = min(
             text_width
             + selected_preset.virtual_box_padding_left_pixels
@@ -365,6 +349,14 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                     "padding_right_pixels": selected_preset.virtual_box_padding_right_pixels,
                     "padding_top_pixels": selected_preset.virtual_box_padding_top_pixels,
                     "padding_bottom_pixels": selected_preset.virtual_box_padding_bottom_pixels,
+                    "layout_tree": {
+                        "region_block_id": region_block.block_id,
+                        "content_block_id": content_block.block_id,
+                        "content_local_x_pixels": content_block.local_x,
+                        "content_local_y_pixels": content_block.local_y,
+                        "content_absolute_x_pixels": content_block.absolute_x,
+                        "content_absolute_y_pixels": content_block.absolute_y,
+                    },
                 },
             }
         )
