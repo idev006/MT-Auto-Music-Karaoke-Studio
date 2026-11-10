@@ -25,6 +25,8 @@ def test_builtin_catalog_has_multiple_groups_and_presets():
     assert DEFAULT_PRESET_ID in PRESET_CATALOG
     assert all(item["font_asset_file"] == "THSarabun Bold.ttf" for item in presets)
     assert all(item["font_family"] == "TH SarabunPSK" for item in presets)
+    assert all(str(item["support_box_color"]).startswith("#") for item in presets)
+    assert all(0.35 <= float(item["support_box_opacity"]) <= 0.92 for item in presets)
 
 
 def test_unknown_preset_fails_with_available_choices():
@@ -42,8 +44,8 @@ def test_visual_preset_changes_style_without_changing_timing_or_lyrics(tmp_path:
 
     classic_text = classic.read_text(encoding="utf-8-sig")
     romantic_text = romantic.read_text(encoding="utf-8-sig")
-    classic_event = next(row for row in classic_text.splitlines() if row.startswith("Dialogue:"))
-    romantic_event = next(row for row in romantic_text.splitlines() if row.startswith("Dialogue:"))
+    classic_event = next(row for row in classic_text.splitlines() if row.startswith("Dialogue: 1,"))
+    romantic_event = next(row for row in romantic_text.splitlines() if row.startswith("Dialogue: 1,"))
     assert classic_event == romantic_event
     assert "เนื้อเพลงเดิม" in classic_event
     assert "0:00:12.34,0:00:17.89" in classic_event
@@ -95,8 +97,29 @@ def test_each_lyric_event_gets_an_independent_maximum_fitting_font_size(tmp_path
 
     events = [
         row for row in destination.read_text(encoding="utf-8-sig").splitlines()
-        if row.startswith("Dialogue:")
+        if row.startswith("Dialogue: 1,")
     ]
     sizes = [int(re.search(r"\\fs(\d+)", event).group(1)) for event in events]
     assert sizes[0] == 142
     assert sizes[1] < sizes[0]
+
+
+def test_each_lyric_event_has_a_synchronized_support_box(tmp_path: Path):
+    destination = tmp_path / "support-box.ass"
+    evidence = write_ass(
+        (TimedLine(1.25, 4.5, "ข้อความคาราโอเกะ"),),
+        destination,
+        canvas=PORTRAIT_CANVAS,
+        progressive=False,
+    )
+
+    events = [
+        row for row in destination.read_text(encoding="utf-8-sig").splitlines()
+        if row.startswith("Dialogue:")
+    ]
+    assert len(events) == 2
+    assert events[0].startswith("Dialogue: 0,0:00:01.25,0:00:04.50")
+    assert events[1].startswith("Dialogue: 1,0:00:01.25,0:00:04.50")
+    assert "\\p1" in events[0]
+    assert evidence[0]["box_width_pixels"] > evidence[0]["text_width_pixels"]
+    assert evidence[0]["box_height_pixels"] > evidence[0]["text_height_pixels"]

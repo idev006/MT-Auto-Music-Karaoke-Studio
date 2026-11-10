@@ -79,12 +79,39 @@ def _visible_character_count(text: str) -> int:
     return sum(not unicodedata.combining(character) and not character.isspace() for character in text)
 
 
+def _progressive_text(
+    line: TimedLine,
+    display_text: str,
+    display_font_size: int,
+) -> str:
+    """Preserve timing tags while applying the selected visual line break."""
+    split_index = None
+    if "\n" in display_text:
+        first_display_line = display_text.split("\n", 1)[0]
+        split_index = len(first_display_line)
+    position = 0
+    rendered_spans = []
+    for span in line.highlight_spans:
+        characters = []
+        for character in span.text:
+            if split_index is not None and position == split_index and character.isspace():
+                characters.append(r"\N")
+            else:
+                characters.append(_ass_escape(character))
+            position += 1
+        rendered_spans.append(
+            f"{{\\kf{max(1, round((span.end - span.start) * 100))}}}"
+            + "".join(characters)
+        )
+    return f"{{\\fs{display_font_size}}}" + "".join(rendered_spans)
+
+
 def _layout_plain_text(
     text: str,
     preset: KaraokeVisualPreset,
     canvas: tuple[int, int],
     font_path: Path | None = None,
-) -> tuple[str, int]:
+) -> tuple[str, int, float, float]:
     """Maximize each lyric event independently using shaped font measurements."""
     width, height = canvas
     safe_width = width * preset.safe_width_ratio
@@ -102,7 +129,7 @@ def _layout_plain_text(
     for size in range(maximum_size, preset.minimum_font_size - 1, -1):
         one_width, one_height = metrics(text, size)
         if one_width <= safe_width and one_height <= allowed_height:
-            return text, size
+            return text, size, one_width, one_height
         if preset.maximum_lines < 2:
             continue
         candidates: list[tuple[float, str, float]] = []
@@ -119,8 +146,10 @@ def _layout_plain_text(
             if widest <= safe_width and total_height <= allowed_height:
                 candidates.append((abs(left_width - right_width), f"{left}\n{right}", widest))
         if candidates:
-            _imbalance, display, _widest = min(candidates)
-            return display, size
+            _imbalance, display, widest = min(candidates)
+            _line_width, line_height = metrics(display.split("\n", 1)[0], size)
+            total_height = 2 * line_height + size * preset.inter_line_spacing_ratio
+            return display, size, widest, total_height
     raise ValueError(
         f"Lyric text cannot fit preset {preset.preset_id!r} above minimum font size "
         f"{preset.minimum_font_size}: {text!r}"
@@ -159,25 +188,47 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     events = []
     layout_evidence = []
     for line_index, line in enumerate(lines):
-        display_text = line.text
-        display_font_size = selected_preset.font_size_for(canvas)
+        display_text, display_font_size, text_width, text_height = _layout_plain_text(
+            line.text, selected_preset, canvas, font_path
+        )
         if progressive and line.highlight_spans:
-            text = "".join(
-                f"{{\\kf{max(1, round((span.end - span.start) * 100))}}}"
-                f"{_ass_escape(span.text)}"
-                for span in line.highlight_spans
-            )
+            text = _progressive_text(line, display_text, display_font_size)
         elif progressive:
             duration_cs = max(1, round((line.end - line.start) * 100))
-            text = f"{{\\kf{duration_cs}}}{_ass_escape(line.text)}"
-        else:
-            display_text, display_font_size = _layout_plain_text(
-                line.text, selected_preset, canvas, font_path
+            text = (
+                f"{{\\fs{display_font_size}}}{{\\kf{duration_cs}}}"
+                f"{_ass_escape(display_text)}"
             )
+        else:
             size_override = (
                 f"{{\\fs{display_font_size}}}"
             )
             text = size_override + _ass_escape(display_text)
+        padding_x = display_font_size * selected_preset.support_padding_x_em
+        padding_y = display_font_size * selected_preset.support_padding_y_em
+        box_width = min(
+            text_width + 2 * padding_x,
+            width * selected_preset.safe_width_ratio + 2 * padding_x,
+        )
+        box_height = text_height + 2 * padding_y
+        box_left = (width - box_width) / 2
+        box_top = (
+            height
+            - selected_preset.margin_vertical_for(canvas)
+            - text_height
+            - padding_y
+        )
+        red = selected_preset.support_box_color[1:3]
+        green = selected_preset.support_box_color[3:5]
+        blue = selected_preset.support_box_color[5:7]
+        ass_box_color = f"&H{blue}{green}{red}&"
+        ass_box_alpha = round((1 - selected_preset.support_box_opacity) * 255)
+        box_drawing = (
+            f"{{\\an7\\pos({box_left:.1f},{box_top:.1f})\\p1\\bord0\\shad0"
+            f"\\1c{ass_box_color}\\1a&H{ass_box_alpha:02X}&}}"
+            f"m 0 0 l {round(box_width)} 0 l {round(box_width)} {round(box_height)} "
+            f"l 0 {round(box_height)}{{\\p0}}"
+        )
         layout_evidence.append(
             {
                 "line_index": line_index,
@@ -188,10 +239,22 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 "canvas": list(canvas),
                 "safe_width_pixels": round(canvas[0] * selected_preset.safe_width_ratio, 2),
                 "measurement": "freetype_glyph_advance" if font_path else "fallback_estimate",
+                "text_width_pixels": round(text_width, 2),
+                "text_height_pixels": round(text_height, 2),
+                "box_width_pixels": round(box_width, 2),
+                "box_height_pixels": round(box_height, 2),
+                "box_left_pixels": round(box_left, 2),
+                "box_top_pixels": round(box_top, 2),
+                "box_color": selected_preset.support_box_color,
+                "box_opacity": selected_preset.support_box_opacity,
             }
         )
         events.append(
             f"Dialogue: 0,{_ass_time(line.start)},{_ass_time(line.end)},Karaoke,,0,0,0,,"
+            f"{box_drawing}"
+        )
+        events.append(
+            f"Dialogue: 1,{_ass_time(line.start)},{_ass_time(line.end)},Karaoke,,0,0,0,,"
             f"{text}"
         )
     destination.write_text(header + "\n".join(events) + "\n", encoding="utf-8-sig")

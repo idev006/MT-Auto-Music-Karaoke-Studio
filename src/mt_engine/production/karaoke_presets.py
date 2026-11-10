@@ -26,6 +26,10 @@ class KaraokeVisualPreset:
     safe_width_ratio: float = 0.86
     allowed_text_height_ratio: float = 0.20
     inter_line_spacing_ratio: float = 0.08
+    support_box_color: str = "#18120A"
+    support_box_opacity: float = 0.68
+    support_padding_x_em: float = 0.32
+    support_padding_y_em: float = 0.18
     active_color: str = "&H00FFFFFF"
     inactive_color: str = "&H0000D7FF"
     outline_color: str = "&H00101010"
@@ -86,26 +90,31 @@ _PRESETS = (
     KaraokeVisualPreset(
         "classic-blue", "classic", "Classic Blue",
         active_color="&H00FFFFFF", inactive_color="&H00FFB060",
+        support_box_color="#0B2038",
     ),
     KaraokeVisualPreset(
         "modern-minimal", "modern", "Modern Minimal", font_size=52,
         inactive_color="&H00D8D8D8", outline_width=2.0, shadow_depth=2.0,
         margin_vertical=92,
+        support_box_color="#111827", support_box_opacity=0.48,
     ),
     KaraokeVisualPreset(
         "glass-caption", "modern", "Glass Caption", font_size=52,
         inactive_color="&H00F0F0F0", background_color="&H50000000",
-        border_style=3, outline_width=8.0, shadow_depth=0.0, margin_vertical=88,
+        border_style=1, outline_width=3.0, shadow_depth=0.0, margin_vertical=88,
+        support_box_color="#18202A", support_box_opacity=0.42,
     ),
     KaraokeVisualPreset(
         "neon-pink", "neon", "Neon Pink", active_color="&H00FFFFFF",
         inactive_color="&H00FF66FF", outline_color="&H00600060",
         outline_width=5.0, shadow_depth=2.0,
+        support_box_color="#220D2B", support_box_opacity=0.72,
     ),
     KaraokeVisualPreset(
         "neon-blue", "neon", "Neon Blue", active_color="&H00FFFFFF",
         inactive_color="&H00FFD060", outline_color="&H00603000",
         outline_width=5.0, shadow_depth=2.0,
+        support_box_color="#071D35", support_box_opacity=0.72,
     ),
     KaraokeVisualPreset(
         "romantic-rose", "romantic", "Romantic Rose", font_size=58,
@@ -113,36 +122,42 @@ _PRESETS = (
         active_color="&H00FFFFFF", inactive_color="&H00B8A0FF",
         outline_color="&H00402050", outline_width=5.0, shadow_depth=3.0,
         portrait_margin_vertical=145,
+        support_box_color="#301B38", support_box_opacity=0.66,
     ),
     KaraokeVisualPreset(
         "sunset-love", "romantic", "Sunset Love", font_size=58,
         portrait_font_size=116, minimum_font_size=80,
         active_color="&H00FFFFFF", inactive_color="&H0060B8FF",
         outline_color="&H00302030", shadow_depth=2.0,
+        support_box_color="#402018", support_box_opacity=0.62,
     ),
     KaraokeVisualPreset(
         "candy-pop", "fun", "Candy Pop", font_size=62,
         portrait_font_size=122, minimum_font_size=84,
         inactive_color="&H0080FFFF", outline_color="&H00802080",
         outline_width=5.0, letter_spacing=1.0,
+        support_box_color="#35113C", support_box_opacity=0.64,
     ),
     KaraokeVisualPreset(
         "festival-bold", "fun", "Festival Bold", font_size=66,
         portrait_font_size=128, minimum_font_size=88,
         inactive_color="&H0000FFFF", outline_color="&H00000000",
         outline_width=6.0, shadow_depth=3.0,
+        support_box_color="#211300", support_box_opacity=0.70,
     ),
     KaraokeVisualPreset(
         "maximum-contrast", "accessible", "Maximum Contrast", font_size=68,
         portrait_font_size=128, minimum_font_size=90,
         inactive_color="&H0000FFFF", outline_color="&H00000000",
         outline_width=7.0, shadow_depth=0.0, margin_vertical=84,
+        support_box_color="#000000", support_box_opacity=0.88,
     ),
     KaraokeVisualPreset(
         "dark-caption-bar", "accessible", "Dark Caption Bar", font_size=62,
         portrait_font_size=118, minimum_font_size=84,
         inactive_color="&H00FFFFFF", background_color="&H30000000",
-        border_style=3, outline_width=12.0, shadow_depth=0.0, margin_vertical=78,
+        border_style=1, outline_width=4.0, shadow_depth=0.0, margin_vertical=78,
+        support_box_color="#000000", support_box_opacity=0.82,
     ),
 )
 
