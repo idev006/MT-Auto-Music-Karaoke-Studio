@@ -6,6 +6,8 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 
+from .layout import CanvasLayoutContext, LayoutCoordinator, VirtualBoxSpec
+
 DEFAULT_FONT_FILE = "THSarabun Bold.ttf"
 DEFAULT_FONT_FAMILY = "TH SarabunPSK"
 
@@ -29,6 +31,7 @@ class KaraokeVisualPreset:
     portrait_virtual_box_height_pixels: int = 460
     virtual_box_margin_left_pixels: int = 10
     virtual_box_margin_right_pixels: int = 10
+    virtual_box_margin_top_pixels: int = 0
     virtual_box_margin_bottom_pixels: int = 10
     virtual_box_padding_left_pixels: int = 32
     virtual_box_padding_right_pixels: int = 32
@@ -80,28 +83,30 @@ class KaraokeVisualPreset:
         )
 
     def virtual_box_for(self, canvas: tuple[int, int]) -> tuple[int, int, int, int]:
-        """Return left, top, width and height of the configurable layout boundary."""
+        """Place the box through the shared canvas coordinator."""
         canvas_width, canvas_height = canvas
-        available_width = max(
-            1,
-            canvas_width
-            - self.virtual_box_margin_left_pixels
-            - self.virtual_box_margin_right_pixels,
-        )
-        requested_width = self.virtual_box_width_pixels or available_width
-        box_width = min(requested_width, available_width)
         requested_height = (
             self.portrait_virtual_box_height_pixels
             if canvas_height > canvas_width
             else self.virtual_box_height_pixels
         )
-        box_height = min(
-            requested_height,
-            max(1, canvas_height - self.virtual_box_margin_bottom_pixels),
+        placed = LayoutCoordinator(CanvasLayoutContext(*canvas)).place(
+            (
+                VirtualBoxSpec(
+                    box_id="karaoke-primary",
+                    width=self.virtual_box_width_pixels,
+                    height=requested_height,
+                    margin_left=self.virtual_box_margin_left_pixels,
+                    margin_right=self.virtual_box_margin_right_pixels,
+                    margin_top=self.virtual_box_margin_top_pixels,
+                    margin_bottom=self.virtual_box_margin_bottom_pixels,
+                    collision_group="bottom-captions",
+                    priority=100,
+                ),
+            )
         )
-        left = self.virtual_box_margin_left_pixels + (available_width - box_width) // 2
-        top = canvas_height - self.virtual_box_margin_bottom_pixels - box_height
-        return left, top, box_width, box_height
+        box = placed[0]
+        return box.left, box.top, box.width, box.height
 
     def ass_style(self, canvas: tuple[int, int] = (1920, 1080)) -> str:
         return (
