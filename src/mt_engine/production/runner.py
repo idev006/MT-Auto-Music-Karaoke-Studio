@@ -78,12 +78,17 @@ def produce_song(
     accept_unreviewed_timing: bool = False,
     ffmpeg_preset: str = "veryfast",
     karaoke_preset: str = DEFAULT_PRESET_ID,
+    font_assets_dir: Path = Path("assets/Fonts"),
     openrouter_config: Path = Path("config/openrouter.env"),
     openrouter_mode: str | None = None,
     timing_lock: Path | None = None,
 ) -> ProductionResult:
     assets = discover_song(source_dir, single_image_for_both=single_image_for_both)
     selected_karaoke_preset = get_karaoke_preset(karaoke_preset)
+    resolved_font_assets = font_assets_dir.resolve()
+    selected_font_file = resolved_font_assets / selected_karaoke_preset.font_asset_file
+    if not selected_font_file.is_file():
+        raise FileNotFoundError(f"Karaoke font asset was not found: {selected_font_file}")
     if timing_lock is None and not accept_unreviewed_timing:
         raise ValueError("This first ASR-guided timing proposal requires explicit test approval")
     ffmpeg = (ffmpeg_root / "bin" / "ffmpeg.exe").resolve()
@@ -382,6 +387,7 @@ def produce_song(
         destination=staged_mp4,
         preset=ffmpeg_preset,
         canvas=canvas,
+        fonts_dir=resolved_font_assets,
     )
 
     source_hash_after = sha256_file(assets.mp3)
@@ -504,6 +510,11 @@ def produce_song(
             "openrouter_spend": router_spend.to_primitive(),
         },
         "karaoke_visual_preset": selected_karaoke_preset.to_primitive(),
+        "karaoke_font_asset": {
+            "file": selected_font_file.name,
+            "family": selected_karaoke_preset.font_family,
+            "sha256": sha256_file(selected_font_file),
+        },
         "started_at": started_at,
         "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }

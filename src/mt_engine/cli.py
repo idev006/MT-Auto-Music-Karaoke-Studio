@@ -25,6 +25,7 @@ def _parser() -> argparse.ArgumentParser:
     produce.add_argument("--cpu-threads", type=int, default=8)
     produce.add_argument("--ffmpeg-preset", default="veryfast")
     produce.add_argument("--karaoke-preset", default=DEFAULT_PRESET_ID)
+    produce.add_argument("--font-assets-dir", type=Path, default=Path("assets/Fonts"))
     produce.add_argument("--single-image-for-both", action="store_true")
     produce.add_argument("--accept-unreviewed-timing", action="store_true")
     produce.add_argument(
@@ -73,6 +74,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             accept_unreviewed_timing=args.accept_unreviewed_timing,
             ffmpeg_preset=args.ffmpeg_preset,
             karaoke_preset=args.karaoke_preset,
+            font_assets_dir=args.font_assets_dir,
             openrouter_config=args.openrouter_config,
             openrouter_mode=args.openrouter_mode,
             timing_lock=args.timing_lock,

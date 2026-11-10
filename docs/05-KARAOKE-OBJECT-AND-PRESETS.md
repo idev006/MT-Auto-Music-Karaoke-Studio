@@ -46,6 +46,16 @@ content SHA-256 recorded in the run manifest. `list-presets` exposes the catalog
 timeline field. The remaining target catalog is backlog and must be released only with Thai
 typography and preview/final parity evidence.
 
+## Bundled font policy
+
+Built-in presets default to `assets/Fonts/THSarabun Bold.ttf`. Its internal family name is
+`TH SarabunPSK` and style is Bold; ASS must use the internal family rather than the filename.
+The runner fails before rendering when the declared asset is absent, passes the configured
+font-assets directory to libass, and records filename, family and SHA-256 in the manifest. A
+machine-installed font with the same or a similar name must not silently replace the bundled
+asset. Presets may select another bundled font only by declaring both its asset filename and
+verified internal family.
+
 ## Creative ownership
 Creative Director sets style; Music Video Director sets motion/emotional intent; Motion Designer and Thai Typography Specialist specify look/readability; Rendering Engineer verifies engine parity; QA approves test renders. These are design responsibilities, not claims of hired staff.
 

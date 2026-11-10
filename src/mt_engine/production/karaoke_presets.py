@@ -6,16 +6,20 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 
+DEFAULT_FONT_FILE = "THSarabun Bold.ttf"
+DEFAULT_FONT_FAMILY = "TH SarabunPSK"
+
 
 @dataclass(frozen=True, slots=True)
 class KaraokeVisualPreset:
     preset_id: str
     group_id: str
     display_name: str
-    font_family: str = "Tahoma"
+    font_family: str = DEFAULT_FONT_FAMILY
+    font_asset_file: str = DEFAULT_FONT_FILE
     font_size: int = 56
-    portrait_font_size: int = 86
-    minimum_font_size: int = 52
+    portrait_font_size: int = 108
+    minimum_font_size: int = 68
     maximum_lines: int = 2
     safe_width_ratio: float = 0.86
     active_color: str = "&H00FFFFFF"
@@ -94,38 +98,38 @@ _PRESETS = (
     ),
     KaraokeVisualPreset(
         "romantic-rose", "romantic", "Romantic Rose", font_size=58,
-        portrait_font_size=92, minimum_font_size=64,
+        portrait_font_size=116, minimum_font_size=80,
         active_color="&H00FFFFFF", inactive_color="&H00B8A0FF",
         outline_color="&H00402050", outline_width=5.0, shadow_depth=3.0,
         portrait_margin_vertical=145,
     ),
     KaraokeVisualPreset(
         "sunset-love", "romantic", "Sunset Love", font_size=58,
-        portrait_font_size=92, minimum_font_size=64,
+        portrait_font_size=116, minimum_font_size=80,
         active_color="&H00FFFFFF", inactive_color="&H0060B8FF",
         outline_color="&H00302030", shadow_depth=2.0,
     ),
     KaraokeVisualPreset(
         "candy-pop", "fun", "Candy Pop", font_size=62,
-        portrait_font_size=98, minimum_font_size=66,
+        portrait_font_size=122, minimum_font_size=84,
         inactive_color="&H0080FFFF", outline_color="&H00802080",
         outline_width=5.0, letter_spacing=1.0,
     ),
     KaraokeVisualPreset(
         "festival-bold", "fun", "Festival Bold", font_size=66,
-        portrait_font_size=104, minimum_font_size=70,
+        portrait_font_size=128, minimum_font_size=88,
         inactive_color="&H0000FFFF", outline_color="&H00000000",
         outline_width=6.0, shadow_depth=3.0,
     ),
     KaraokeVisualPreset(
         "maximum-contrast", "accessible", "Maximum Contrast", font_size=68,
-        portrait_font_size=104, minimum_font_size=72,
+        portrait_font_size=128, minimum_font_size=90,
         inactive_color="&H0000FFFF", outline_color="&H00000000",
         outline_width=7.0, shadow_depth=0.0, margin_vertical=84,
     ),
     KaraokeVisualPreset(
         "dark-caption-bar", "accessible", "Dark Caption Bar", font_size=62,
-        portrait_font_size=94, minimum_font_size=68,
+        portrait_font_size=118, minimum_font_size=84,
         inactive_color="&H00FFFFFF", background_color="&H30000000",
         border_style=3, outline_width=12.0, shadow_depth=0.0, margin_vertical=78,
     ),

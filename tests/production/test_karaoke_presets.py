@@ -22,6 +22,8 @@ def test_builtin_catalog_has_multiple_groups_and_presets():
     assert len({item["preset_id"] for item in presets}) == len(presets)
     assert len({item["content_sha256"] for item in presets}) == len(presets)
     assert DEFAULT_PRESET_ID in PRESET_CATALOG
+    assert all(item["font_asset_file"] == "THSarabun Bold.ttf" for item in presets)
+    assert all(item["font_family"] == "TH SarabunPSK" for item in presets)
 
 
 def test_unknown_preset_fails_with_available_choices():
@@ -68,6 +70,6 @@ def test_portrait_romantic_preset_is_large_and_wraps_long_thai_line(tmp_path: Pa
     )
 
     content = destination.read_text(encoding="utf-8-sig")
-    assert "Style: Karaoke,Tahoma,92," in content
+    assert "Style: Karaoke,TH SarabunPSK,116," in content
     assert "ไม่เคยทำให้ฉัน\\Nต้องทุกข์ร้อนใจ" in content
     assert ",145,1" in content

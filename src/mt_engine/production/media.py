@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import unicodedata
@@ -179,12 +180,22 @@ def run_ffmpeg_render(
     destination: Path,
     preset: str,
     canvas: tuple[int, int] | None = None,
+    fonts_dir: Path | None = None,
 ) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     width, height = canvas or video_canvas(image)
+    ass_filter = f"ass={ass_path.name}"
+    if fonts_dir is not None:
+        resolved_fonts = fonts_dir.resolve()
+        if not resolved_fonts.is_dir():
+            raise FileNotFoundError(f"ASS fonts directory was not found: {resolved_fonts}")
+        relative_fonts = Path(
+            os.path.relpath(resolved_fonts, ass_path.parent.resolve())
+        ).as_posix()
+        ass_filter += f":fontsdir='{relative_fonts}'"
     filtergraph = (
         f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,ass={ass_path.name}[v]"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,{ass_filter}[v]"
     )
     command = [
         str(ffmpeg),
