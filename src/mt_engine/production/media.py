@@ -131,8 +131,12 @@ def _layout_plain_text(
     def metrics(value: str, size: int) -> tuple[float, float]:
         if font_path is not None:
             font = ImageFont.truetype(str(font_path), size)
-            ascent, descent = font.getmetrics()
-            return float(font.getlength(value)), float(ascent + descent)
+            left, top, right, bottom = font.getbbox(value)
+            # Font ascent/descent describes the full design space and badly
+            # overstates TH Sarabun's visible Thai glyph height. Ink bounds
+            # plus a small diacritic guard matches what libass actually draws.
+            ink_height = max(1, bottom - top)
+            return float(max(font.getlength(value), right - left)), ink_height * 1.08
         return _visible_character_count(value) * size * 0.56, size * 1.15
 
     maximum_size = preset.maximum_font_size_for(canvas)

@@ -75,7 +75,7 @@ def test_portrait_romantic_preset_is_large_and_wraps_long_thai_line(tmp_path: Pa
     content = destination.read_text(encoding="utf-8-sig")
     assert "Style: Karaoke,TH SarabunPSK,116," in content
     event_size = int(re.search(r"\\fs(\d+)", content).group(1))
-    assert 116 < event_size <= 142
+    assert 140 < event_size <= 240
     assert "ไม่เคยทำให้ฉัน\\Nต้องทุกข์ร้อนใจ" in content
     assert ",145,1" in content
 
@@ -100,7 +100,7 @@ def test_each_lyric_event_gets_an_independent_maximum_fitting_font_size(tmp_path
         if row.startswith("Dialogue: 1,")
     ]
     sizes = [int(re.search(r"\\fs(\d+)", event).group(1)) for event in events]
-    assert sizes[0] == 142
+    assert sizes[0] == 240
     assert sizes[1] < sizes[0]
 
 
@@ -158,7 +158,7 @@ def test_each_message_selects_its_own_largest_fitting_font(tmp_path: Path):
         progressive=False,
     )
 
-    assert evidence[0]["font_size"] == 142
+    assert evidence[0]["font_size"] == 240
     assert evidence[1]["font_size"] < evidence[0]["font_size"]
     assert evidence[1]["text_width_pixels"] <= evidence[1]["safe_width_pixels"]
     assert evidence[1]["text_height_pixels"] <= evidence[1]["safe_height_pixels"]

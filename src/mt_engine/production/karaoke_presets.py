@@ -20,8 +20,8 @@ class KaraokeVisualPreset:
     font_size: int = 56
     portrait_font_size: int = 108
     minimum_font_size: int = 68
-    maximum_font_size: int = 84
-    portrait_maximum_font_size: int = 142
+    maximum_font_size: int = 120
+    portrait_maximum_font_size: int = 240
     maximum_lines: int = 2
     inter_line_spacing_ratio: float = 0.08
     virtual_box_width_pixels: int | None = None
