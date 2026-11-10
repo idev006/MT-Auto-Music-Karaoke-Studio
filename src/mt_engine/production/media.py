@@ -6,6 +6,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,45 @@ def _ass_escape(text: str) -> str:
     return text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}").replace("\n", "\\N")
 
 
+def _visible_character_count(text: str) -> int:
+    return sum(not unicodedata.combining(character) and not character.isspace() for character in text)
+
+
+def _layout_plain_text(
+    text: str,
+    preset: KaraokeVisualPreset,
+    canvas: tuple[int, int],
+) -> tuple[str, int]:
+    """Create display-only wrapping/shrinking without mutating canonical text."""
+    width, _height = canvas
+    preferred_size = preset.font_size_for(canvas)
+    safe_width = width * preset.safe_width_ratio
+
+    def capacity(size: int) -> int:
+        return max(1, int(safe_width / (size * 0.56)))
+
+    visible_count = _visible_character_count(text)
+    if visible_count <= capacity(preferred_size):
+        return text, preferred_size
+
+    if preset.maximum_lines >= 2:
+        boundaries = [index for index, character in enumerate(text) if character.isspace()]
+        if boundaries:
+            midpoint = len(text) / 2
+            for split in sorted(boundaries, key=lambda index: abs(index - midpoint)):
+                left, right = text[:split].rstrip(), text[split + 1 :].lstrip()
+                if left and right and max(
+                    _visible_character_count(left), _visible_character_count(right)
+                ) <= capacity(preferred_size):
+                    return f"{left}\n{right}", preferred_size
+
+    fitted_size = max(
+        preset.minimum_font_size,
+        int(safe_width / (max(1, visible_count) * 0.56)),
+    )
+    return text, min(preferred_size, fitted_size)
+
+
 def write_ass(
     lines: tuple[TimedLine, ...],
     destination: Path,
@@ -96,7 +136,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-{selected_preset.ass_style()}
+{selected_preset.ass_style(canvas)}
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
@@ -113,7 +153,15 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             duration_cs = max(1, round((line.end - line.start) * 100))
             text = f"{{\\kf{duration_cs}}}{_ass_escape(line.text)}"
         else:
-            text = _ass_escape(line.text)
+            display_text, display_font_size = _layout_plain_text(
+                line.text, selected_preset, canvas
+            )
+            size_override = (
+                f"{{\\fs{display_font_size}}}"
+                if display_font_size != selected_preset.font_size_for(canvas)
+                else ""
+            )
+            text = size_override + _ass_escape(display_text)
         events.append(
             f"Dialogue: 0,{_ass_time(line.start)},{_ass_time(line.end)},Karaoke,,0,0,0,,"
             f"{text}"

@@ -11,7 +11,7 @@ from mt_engine.production.karaoke_presets import (
     list_karaoke_presets,
 )
 from mt_engine.production.lyrics import TimedLine
-from mt_engine.production.media import write_ass
+from mt_engine.production.media import PORTRAIT_CANVAS, write_ass
 
 
 def test_builtin_catalog_has_multiple_groups_and_presets():
@@ -53,3 +53,21 @@ def test_list_presets_cli_outputs_catalog(capsys):
     payload = json.loads(capsys.readouterr().out)
     assert len(payload) == 12
     assert payload[0]["preset_id"] == "classic-gold"
+
+
+def test_portrait_romantic_preset_is_large_and_wraps_long_thai_line(tmp_path: Path):
+    destination = tmp_path / "portrait.ass"
+    line = TimedLine(1.0, 5.0, "ไม่เคยทำให้ฉัน ต้องทุกข์ร้อนใจ")
+
+    write_ass(
+        (line,),
+        destination,
+        canvas=PORTRAIT_CANVAS,
+        progressive=False,
+        visual_preset="romantic-rose",
+    )
+
+    content = destination.read_text(encoding="utf-8-sig")
+    assert "Style: Karaoke,Tahoma,92," in content
+    assert "ไม่เคยทำให้ฉัน\\Nต้องทุกข์ร้อนใจ" in content
+    assert ",145,1" in content
