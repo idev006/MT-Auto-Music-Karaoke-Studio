@@ -254,3 +254,48 @@ def run_ffmpeg_render(
         encoding="utf-8",
     )
     return json.loads(probe.stdout)
+
+
+def render_ass_preview(
+    ffmpeg: Path,
+    *,
+    image: Path,
+    ass_path: Path,
+    destination: Path,
+    canvas: tuple[int, int],
+    fonts_dir: Path,
+) -> None:
+    """Render one representative PNG through the production libass path."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    width, height = canvas
+    resolved_fonts = fonts_dir.resolve()
+    if not resolved_fonts.is_dir():
+        raise FileNotFoundError(f"ASS fonts directory was not found: {resolved_fonts}")
+    relative_fonts = Path(
+        os.path.relpath(resolved_fonts, ass_path.parent.resolve())
+    ).as_posix()
+    filtergraph = (
+        f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
+        f"ass={ass_path.name}:fontsdir='{relative_fonts}'"
+    )
+    subprocess.run(
+        [
+            str(ffmpeg),
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-loop",
+            "1",
+            "-i",
+            str(image.resolve()),
+            "-vf",
+            filtergraph,
+            "-frames:v",
+            "1",
+            str(destination.resolve()),
+        ],
+        cwd=ass_path.parent,
+        check=True,
+    )

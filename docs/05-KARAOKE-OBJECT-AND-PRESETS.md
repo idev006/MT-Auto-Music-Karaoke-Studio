@@ -56,6 +56,17 @@ machine-installed font with the same or a similar name must not silently replace
 asset. Presets may select another bundled font only by declaring both its asset filename and
 verified internal family.
 
+## Static preview gate
+
+`preview-presets` renders PNG evidence through the same ASS writer, FFmpeg/libass backend,
+background orientation logic and bundled font directory used by production. The command emits one
+ASS/PNG pair per selected preset, `contact-sheet.png` and `preview_manifest.json` with background,
+font, preset and output hashes. It performs no ASR, audio processing or MP4 rendering. Static
+preview proves layout and inactive-state presentation only; a later short progressive preview is
+required to distinguish active highlight behavior. Identical PNG hashes across supposedly distinct
+static presets are diagnostic evidence that their visible inactive presentation is insufficiently
+different.
+
 ## Creative ownership
 Creative Director sets style; Music Video Director sets motion/emotional intent; Motion Designer and Thai Typography Specialist specify look/readability; Rendering Engineer verifies engine parity; QA approves test renders. These are design responsibilities, not claims of hired staff.
 

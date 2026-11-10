@@ -11,6 +11,7 @@ from pathlib import Path
 from mt_engine.production import produce_song
 from mt_engine.production.karaoke_presets import DEFAULT_PRESET_ID, list_karaoke_presets
 from mt_engine.production.openrouter_vision import rerun_vision_qc
+from mt_engine.production.preset_preview import generate_preset_previews
 from mt_engine.production.release import release_reviewed_candidate
 
 
@@ -54,6 +55,19 @@ def _parser() -> argparse.ArgumentParser:
     release.add_argument("--target", type=Path, required=True)
     release.add_argument("--signoff", type=Path, required=True)
     commands.add_parser("list-presets", help="List built-in karaoke visual presets")
+    preview = commands.add_parser(
+        "preview-presets", help="Render preset PNG previews without producing an MP4"
+    )
+    preview.add_argument("--background", type=Path, required=True)
+    preview.add_argument("--output-dir", type=Path, required=True)
+    preview.add_argument("--ffmpeg-root", type=Path, required=True)
+    preview.add_argument("--font-assets-dir", type=Path, default=Path("assets/Fonts"))
+    preview.add_argument(
+        "--text", default="ไม่เคยทำให้ฉัน ต้องทุกข์ร้อนใจ"
+    )
+    preview.add_argument(
+        "--presets", help="Comma-separated preset IDs; default renders the full catalog"
+    )
     return parser
 
 
@@ -116,6 +130,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     if args.command == "list-presets":
         print(json.dumps(list_karaoke_presets(), ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "preview-presets":
+        preset_ids = (
+            tuple(item.strip() for item in args.presets.split(",") if item.strip())
+            if args.presets
+            else None
+        )
+        result = generate_preset_previews(
+            background=args.background,
+            output_dir=args.output_dir,
+            ffmpeg_root=args.ffmpeg_root,
+            fonts_dir=args.font_assets_dir,
+            text=args.text,
+            preset_ids=preset_ids,
+        )
+        print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
     return 2
 

@@ -52,4 +52,9 @@ Romantic, Fun and Accessible groups. Run `mt-karaoke list-presets` to inspect th
 with `produce-song --karaoke-preset romantic-rose`. Presets change ASS presentation only; lyric
 text and timing remain owned by their existing SSOT.
 
+Use `mt-karaoke preview-presets --background <image> --output-dir <folder> --ffmpeg-root <folder>`
+to render one production-libass PNG per preset plus a contact sheet and hash-bound manifest. This
+fast path has no audio, alignment, or MP4 work and is the required visual-design check before an
+expensive video render.
+
 Vision QC verifies rendered text only; it does not replace the ASR/audio temporal-sync gate. The adapter requests provider data collection denial, fails closed to `REVIEW_REQUIRED`, and records model results without recording the API key.
