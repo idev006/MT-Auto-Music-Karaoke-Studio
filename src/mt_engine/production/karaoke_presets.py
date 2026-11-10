@@ -23,13 +23,19 @@ class KaraokeVisualPreset:
     maximum_font_size: int = 84
     portrait_maximum_font_size: int = 142
     maximum_lines: int = 2
-    safe_width_ratio: float = 0.86
-    allowed_text_height_ratio: float = 0.20
     inter_line_spacing_ratio: float = 0.08
+    virtual_box_width_pixels: int | None = None
+    virtual_box_height_pixels: int = 260
+    portrait_virtual_box_height_pixels: int = 460
+    virtual_box_margin_left_pixels: int = 10
+    virtual_box_margin_right_pixels: int = 10
+    virtual_box_margin_bottom_pixels: int = 10
+    virtual_box_padding_left_pixels: int = 32
+    virtual_box_padding_right_pixels: int = 32
+    virtual_box_padding_top_pixels: int = 24
+    virtual_box_padding_bottom_pixels: int = 24
     support_box_color: str = "#18120A"
     support_box_opacity: float = 0.68
-    support_padding_x_em: float = 0.32
-    support_padding_y_em: float = 0.18
     active_color: str = "&H00FFFFFF"
     inactive_color: str = "&H0000D7FF"
     outline_color: str = "&H00101010"
@@ -45,7 +51,7 @@ class KaraokeVisualPreset:
     margin_vertical: int = 70
     portrait_margin_vertical: int = 125
     letter_spacing: float = 0.0
-    schema_version: int = 1
+    schema_version: int = 2
 
     @property
     def content_sha256(self) -> str:
@@ -72,6 +78,30 @@ class KaraokeVisualPreset:
             if canvas[1] > canvas[0]
             else self.maximum_font_size
         )
+
+    def virtual_box_for(self, canvas: tuple[int, int]) -> tuple[int, int, int, int]:
+        """Return left, top, width and height of the configurable layout boundary."""
+        canvas_width, canvas_height = canvas
+        available_width = max(
+            1,
+            canvas_width
+            - self.virtual_box_margin_left_pixels
+            - self.virtual_box_margin_right_pixels,
+        )
+        requested_width = self.virtual_box_width_pixels or available_width
+        box_width = min(requested_width, available_width)
+        requested_height = (
+            self.portrait_virtual_box_height_pixels
+            if canvas_height > canvas_width
+            else self.virtual_box_height_pixels
+        )
+        box_height = min(
+            requested_height,
+            max(1, canvas_height - self.virtual_box_margin_bottom_pixels),
+        )
+        left = self.virtual_box_margin_left_pixels + (available_width - box_width) // 2
+        top = canvas_height - self.virtual_box_margin_bottom_pixels - box_height
+        return left, top, box_width, box_height
 
     def ass_style(self, canvas: tuple[int, int] = (1920, 1080)) -> str:
         return (

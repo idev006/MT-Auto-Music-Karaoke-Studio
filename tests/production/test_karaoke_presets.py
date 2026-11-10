@@ -123,3 +123,42 @@ def test_each_lyric_event_has_a_synchronized_support_box(tmp_path: Path):
     assert "\\p1" in events[0]
     assert evidence[0]["box_width_pixels"] > evidence[0]["text_width_pixels"]
     assert evidence[0]["box_height_pixels"] > evidence[0]["text_height_pixels"]
+
+
+def test_virtual_box_uses_configurable_pixel_margins_and_padding(tmp_path: Path):
+    destination = tmp_path / "virtual-box.ass"
+    preset = get_karaoke_preset("classic-gold")
+
+    evidence = write_ass(
+        (TimedLine(1.0, 3.0, "ข้อความ"),),
+        destination,
+        canvas=PORTRAIT_CANVAS,
+        progressive=False,
+        visual_preset=preset,
+    )[0]
+
+    virtual_box = evidence["virtual_box"]
+    assert virtual_box["left_pixels"] == 10
+    assert virtual_box["width_pixels"] == 1060
+    assert virtual_box["height_pixels"] == 460
+    assert virtual_box["top_pixels"] == 1450
+    assert evidence["safe_width_pixels"] == 996
+    assert evidence["safe_height_pixels"] == 412
+
+
+def test_each_message_selects_its_own_largest_fitting_font(tmp_path: Path):
+    destination = tmp_path / "per-message-fit.ass"
+    evidence = write_ass(
+        (
+            TimedLine(1.0, 2.0, "รัก"),
+            TimedLine(2.0, 3.0, "เนื้อเพลงที่มีความยาวมากกว่า จึงต้องคำนวณใหม่ทุกครั้ง"),
+        ),
+        destination,
+        canvas=PORTRAIT_CANVAS,
+        progressive=False,
+    )
+
+    assert evidence[0]["font_size"] == 142
+    assert evidence[1]["font_size"] < evidence[0]["font_size"]
+    assert evidence[1]["text_width_pixels"] <= evidence[1]["safe_width_pixels"]
+    assert evidence[1]["text_height_pixels"] <= evidence[1]["safe_height_pixels"]

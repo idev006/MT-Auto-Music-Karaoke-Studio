@@ -113,9 +113,19 @@ def _layout_plain_text(
     font_path: Path | None = None,
 ) -> tuple[str, int, float, float]:
     """Maximize each lyric event independently using shaped font measurements."""
-    width, height = canvas
-    safe_width = width * preset.safe_width_ratio
-    allowed_height = height * preset.allowed_text_height_ratio
+    _left, _top, box_width, box_height = preset.virtual_box_for(canvas)
+    safe_width = max(
+        1,
+        box_width
+        - preset.virtual_box_padding_left_pixels
+        - preset.virtual_box_padding_right_pixels,
+    )
+    allowed_height = max(
+        1,
+        box_height
+        - preset.virtual_box_padding_top_pixels
+        - preset.virtual_box_padding_bottom_pixels,
+    )
     boundaries = [index for index, character in enumerate(text) if character.isspace()]
 
     def metrics(value: str, size: int) -> tuple[float, float]:
@@ -204,19 +214,39 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 f"{{\\fs{display_font_size}}}"
             )
             text = size_override + _ass_escape(display_text)
-        padding_x = display_font_size * selected_preset.support_padding_x_em
-        padding_y = display_font_size * selected_preset.support_padding_y_em
-        box_width = min(
-            text_width + 2 * padding_x,
-            width * selected_preset.safe_width_ratio + 2 * padding_x,
+        virtual_left, virtual_top, virtual_width, virtual_height = (
+            selected_preset.virtual_box_for(canvas)
         )
-        box_height = text_height + 2 * padding_y
-        box_left = (width - box_width) / 2
-        box_top = (
-            height
-            - selected_preset.margin_vertical_for(canvas)
-            - text_height
-            - padding_y
+        content_width = (
+            virtual_width
+            - selected_preset.virtual_box_padding_left_pixels
+            - selected_preset.virtual_box_padding_right_pixels
+        )
+        content_height = (
+            virtual_height
+            - selected_preset.virtual_box_padding_top_pixels
+            - selected_preset.virtual_box_padding_bottom_pixels
+        )
+        box_width = min(
+            text_width
+            + selected_preset.virtual_box_padding_left_pixels
+            + selected_preset.virtual_box_padding_right_pixels,
+            virtual_width,
+        )
+        box_height = min(
+            text_height
+            + selected_preset.virtual_box_padding_top_pixels
+            + selected_preset.virtual_box_padding_bottom_pixels,
+            virtual_height,
+        )
+        box_left = virtual_left + (virtual_width - box_width) / 2
+        box_top = virtual_top + virtual_height - box_height
+        text_anchor_x = virtual_left + virtual_width / 2
+        text_anchor_y = (
+            virtual_top + virtual_height - selected_preset.virtual_box_padding_bottom_pixels
+        )
+        text = (
+            f"{{\\an2\\pos({text_anchor_x:.1f},{text_anchor_y:.1f})}}" + text
         )
         red = selected_preset.support_box_color[1:3]
         green = selected_preset.support_box_color[3:5]
@@ -237,7 +267,8 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 "font_size": display_font_size,
                 "display_line_count": display_text.count("\n") + 1,
                 "canvas": list(canvas),
-                "safe_width_pixels": round(canvas[0] * selected_preset.safe_width_ratio, 2),
+                "safe_width_pixels": round(content_width, 2),
+                "safe_height_pixels": round(content_height, 2),
                 "measurement": "freetype_glyph_advance" if font_path else "fallback_estimate",
                 "text_width_pixels": round(text_width, 2),
                 "text_height_pixels": round(text_height, 2),
@@ -247,6 +278,19 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 "box_top_pixels": round(box_top, 2),
                 "box_color": selected_preset.support_box_color,
                 "box_opacity": selected_preset.support_box_opacity,
+                "virtual_box": {
+                    "left_pixels": virtual_left,
+                    "top_pixels": virtual_top,
+                    "width_pixels": virtual_width,
+                    "height_pixels": virtual_height,
+                    "margin_left_pixels": selected_preset.virtual_box_margin_left_pixels,
+                    "margin_right_pixels": selected_preset.virtual_box_margin_right_pixels,
+                    "margin_bottom_pixels": selected_preset.virtual_box_margin_bottom_pixels,
+                    "padding_left_pixels": selected_preset.virtual_box_padding_left_pixels,
+                    "padding_right_pixels": selected_preset.virtual_box_padding_right_pixels,
+                    "padding_top_pixels": selected_preset.virtual_box_padding_top_pixels,
+                    "padding_bottom_pixels": selected_preset.virtual_box_padding_bottom_pixels,
+                },
             }
         )
         events.append(
