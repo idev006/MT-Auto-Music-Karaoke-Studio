@@ -46,9 +46,10 @@ def test_visual_preset_changes_style_without_changing_timing_or_lyrics(tmp_path:
     romantic_text = romantic.read_text(encoding="utf-8-sig")
     classic_event = next(row for row in classic_text.splitlines() if row.startswith("Dialogue: 1,"))
     romantic_event = next(row for row in romantic_text.splitlines() if row.startswith("Dialogue: 1,"))
-    assert classic_event == romantic_event
     assert "เนื้อเพลงเดิม" in classic_event
+    assert "เนื้อเพลงเดิม" in romantic_event
     assert "0:00:12.34,0:00:17.89" in classic_event
+    assert "0:00:12.34,0:00:17.89" in romantic_event
     assert classic_text != romantic_text
 
 
@@ -180,3 +181,26 @@ def test_line_measurement_excludes_thai_combining_marks_from_baseline_count(
     assert measurement["combining_mark_count"] == 3
     assert measurement["space_count"] == 1
     assert measurement["representative_character"] == "ฒ"
+
+
+def test_vertical_measurement_tracks_upper_base_and_lower_zones(tmp_path: Path):
+    font_path = Path("assets/Fonts/THSarabun Bold.ttf").resolve()
+    destination = tmp_path / "vertical-zones.ass"
+    evidence = write_ass(
+        (TimedLine(1.0, 2.0, "กุ้งนี้"),),
+        destination,
+        canvas=PORTRAIT_CANVAS,
+        progressive=False,
+        font_path=font_path,
+    )[0]
+
+    zones = evidence["line_measurements"][0]["vertical_zones"]
+    assert zones["actual_top_from_baseline_pixels"] < 0
+    assert zones["actual_bottom_from_baseline_pixels"] > 0
+    assert zones["upper_mark_extent_pixels"] > 0
+    assert zones["base_body_height_pixels"] > 0
+    assert zones["lower_mark_extent_pixels"] > 0
+    assert zones["ink_height_pixels"] == (
+        zones["actual_bottom_from_baseline_pixels"]
+        - zones["actual_top_from_baseline_pixels"]
+    )

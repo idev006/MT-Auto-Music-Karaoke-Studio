@@ -87,6 +87,7 @@ def _baseline_line_measurement(
     text: str,
     font_path: Path | None,
     font_size: int,
+    preset: KaraokeVisualPreset,
 ) -> dict[str, object]:
     """Expose the ฒ-based estimate without using it as final fit authority."""
     baseline_count = _visible_character_count(text)
@@ -104,8 +105,12 @@ def _baseline_line_measurement(
         representative_width = float(font.getlength("ฒ"))
         space_width = float(font.getlength(" "))
         actual_width = float(font.getlength(text))
+        _left, actual_top, _right, actual_bottom = font.getbbox(text, anchor="ls")
+        _base_left, base_top, _base_right, base_bottom = font.getbbox(
+            "ฒ", anchor="ls"
+        )
         measurement = "freetype_glyph_advance"
-    return {
+    result = {
         "text": text,
         "baseline_character_count": baseline_count,
         "combining_mark_count": combining_count,
@@ -118,6 +123,23 @@ def _baseline_line_measurement(
         "actual_shaped_width_pixels": round(actual_width, 2),
         "measurement": measurement,
     }
+    if font_path is not None:
+        upper_extent = max(0, base_top - actual_top)
+        base_body_height = base_bottom - base_top
+        lower_extent = max(0, actual_bottom - base_bottom)
+        decoration_extent = 2 * preset.outline_width + preset.shadow_depth
+        result["vertical_zones"] = {
+            "baseline_y": 0,
+            "actual_top_from_baseline_pixels": actual_top,
+            "actual_bottom_from_baseline_pixels": actual_bottom,
+            "upper_mark_extent_pixels": upper_extent,
+            "base_body_height_pixels": base_body_height,
+            "lower_mark_extent_pixels": lower_extent,
+            "ink_height_pixels": actual_bottom - actual_top,
+            "decoration_extent_pixels": decoration_extent,
+            "rendered_height_pixels": actual_bottom - actual_top + decoration_extent,
+        }
+    return result
 
 
 def _progressive_text(
@@ -170,15 +192,17 @@ def _layout_plain_text(
     boundaries = [index for index, character in enumerate(text) if character.isspace()]
 
     def metrics(value: str, size: int) -> tuple[float, float]:
+        decoration = 2 * preset.outline_width + preset.shadow_depth
         if font_path is not None:
             font = ImageFont.truetype(str(font_path), size)
-            left, top, right, bottom = font.getbbox(value)
-            # Font ascent/descent describes the full design space and badly
-            # overstates TH Sarabun's visible Thai glyph height. Ink bounds
-            # plus a small diacritic guard matches what libass actually draws.
+            left, top, right, bottom = font.getbbox(value, anchor="ls")
             ink_height = max(1, bottom - top)
-            return float(max(font.getlength(value), right - left)), ink_height * 1.08
-        return _visible_character_count(value) * size * 0.56, size * 1.15
+            ink_width = max(font.getlength(value), right - left)
+            return float(ink_width + decoration), float(ink_height + decoration)
+        return (
+            _visible_character_count(value) * size * 0.56 + decoration,
+            size * 1.15 + decoration,
+        )
 
     maximum_size = preset.maximum_font_size_for(canvas)
     for size in range(maximum_size, preset.minimum_font_size - 1, -1):
@@ -187,23 +211,23 @@ def _layout_plain_text(
             return text, size, one_width, one_height
         if preset.maximum_lines < 2:
             continue
-        candidates: list[tuple[float, str, float]] = []
+        candidates: list[tuple[float, str, float, float]] = []
         for split in boundaries:
             left, right = text[:split].rstrip(), text[split + 1 :].lstrip()
             if not left or not right:
                 continue
             left_width, line_height = metrics(left, size)
-            right_width, _ = metrics(right, size)
+            right_width, right_height = metrics(right, size)
             total_height = (
-                2 * line_height + size * preset.inter_line_spacing_ratio
+                line_height + right_height + size * preset.inter_line_spacing_ratio
             )
             widest = max(left_width, right_width)
             if widest <= safe_width and total_height <= allowed_height:
-                candidates.append((abs(left_width - right_width), f"{left}\n{right}", widest))
+                candidates.append(
+                    (abs(left_width - right_width), f"{left}\n{right}", widest, total_height)
+                )
         if candidates:
-            _imbalance, display, widest = min(candidates)
-            _line_width, line_height = metrics(display.split("\n", 1)[0], size)
-            total_height = 2 * line_height + size * preset.inter_line_spacing_ratio
+            _imbalance, display, widest, total_height = min(candidates)
             return display, size, widest, total_height
     raise ValueError(
         f"Lyric text cannot fit preset {preset.preset_id!r} above minimum font size "
@@ -325,7 +349,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 "box_opacity": selected_preset.support_box_opacity,
                 "line_measurements": [
                     _baseline_line_measurement(
-                        display_line, font_path, display_font_size
+                        display_line, font_path, display_font_size, selected_preset
                     )
                     for display_line in display_text.split("\n")
                 ],
