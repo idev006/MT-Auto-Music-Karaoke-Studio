@@ -1,5 +1,6 @@
 import json
 import re
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ from mt_engine.cli import main
 from mt_engine.production.karaoke_presets import (
     DEFAULT_PRESET_ID,
     PRESET_CATALOG,
+    LineFontMode,
     get_karaoke_preset,
     list_karaoke_presets,
 )
@@ -77,7 +79,7 @@ def test_portrait_romantic_preset_is_large_and_wraps_long_thai_line(tmp_path: Pa
     assert "Style: Karaoke,TH SarabunPSK,116," in content
     event_size = int(re.search(r"\\fs(\d+)", content).group(1))
     assert 140 < event_size <= 512
-    assert "ไม่เคยทำให้ฉัน\\Nต้องทุกข์ร้อนใจ" in content
+    assert re.search(r"ไม่เคยทำให้ฉัน\\N\{\\fs\d+\}ต้องทุกข์ร้อนใจ", content)
     assert ",145,1" in content
 
 
@@ -211,3 +213,46 @@ def test_vertical_measurement_tracks_upper_base_and_lower_zones(tmp_path: Path):
         zones["actual_bottom_from_baseline_pixels"]
         - zones["actual_top_from_baseline_pixels"]
     )
+
+
+def test_uniform_and_independent_line_font_modes(tmp_path: Path):
+    font_path = Path("assets/Fonts/THSarabun Bold.ttf").resolve()
+    text = "รักเธอ อยู่เป็นเพื่อนกันให้นานที่สุด"
+    uniform = replace(
+        get_karaoke_preset("classic-gold"),
+        line_font_mode=LineFontMode.UNIFORM,
+    )
+    independent = replace(
+        get_karaoke_preset("classic-gold"),
+        line_font_mode=LineFontMode.INDEPENDENT,
+    )
+
+    uniform_evidence = write_ass(
+        (TimedLine(1.0, 3.0, text),),
+        tmp_path / "uniform.ass",
+        canvas=PORTRAIT_CANVAS,
+        progressive=False,
+        visual_preset=uniform,
+        font_path=font_path,
+    )[0]
+    independent_evidence = write_ass(
+        (TimedLine(1.0, 3.0, text),),
+        tmp_path / "independent.ass",
+        canvas=PORTRAIT_CANVAS,
+        progressive=False,
+        visual_preset=independent,
+        font_path=font_path,
+    )[0]
+
+    assert uniform_evidence["line_font_mode"] == "UNIFORM"
+    assert len(set(uniform_evidence["line_font_sizes"])) == 1
+    assert independent_evidence["line_font_mode"] == "INDEPENDENT"
+    assert len(set(independent_evidence["line_font_sizes"])) == 2
+    assert independent_evidence["line_font_sizes"][0] > independent_evidence["line_font_sizes"][1]
+    assert independent_evidence["inter_line_gaps_pixels"][0] >= 0
+    assert independent_evidence["baseline_offsets_pixels"][1] > (
+        independent_evidence["baseline_offsets_pixels"][0]
+    )
+    first_box, second_box = independent_evidence["line_boxes"]
+    assert abs(first_box["center_x_pixels"] - second_box["center_x_pixels"]) <= 0.5
+    assert first_box["bottom_pixels"] <= second_box["top_pixels"]

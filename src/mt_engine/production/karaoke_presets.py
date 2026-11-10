@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass
+from enum import StrEnum
 
 from .layout import (
     CanvasLayoutContext,
@@ -17,6 +18,11 @@ from .layout import (
 
 DEFAULT_FONT_FILE = "THSarabun Bold.ttf"
 DEFAULT_FONT_FAMILY = "TH SarabunPSK"
+
+
+class LineFontMode(StrEnum):
+    UNIFORM = "UNIFORM"
+    INDEPENDENT = "INDEPENDENT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +38,7 @@ class KaraokeVisualPreset:
     maximum_font_size: int = 260
     portrait_maximum_font_size: int = 512
     maximum_lines: int = 2
-    inter_line_spacing_ratio: float = 0.08
+    line_font_mode: LineFontMode = LineFontMode.UNIFORM
     virtual_box_width_pixels: int | None = None
     virtual_box_height_pixels: int = 260
     portrait_virtual_box_height_pixels: int = 460
@@ -61,7 +67,7 @@ class KaraokeVisualPreset:
     margin_vertical: int = 70
     portrait_margin_vertical: int = 125
     letter_spacing: float = 0.0
-    schema_version: int = 2
+    schema_version: int = 3
 
     @property
     def content_sha256(self) -> str:
@@ -171,6 +177,7 @@ _PRESETS = (
     ),
     KaraokeVisualPreset(
         "modern-minimal", "modern", "Modern Minimal", font_size=52,
+        line_font_mode=LineFontMode.INDEPENDENT,
         inactive_color="&H00D8D8D8", outline_width=2.0, shadow_depth=2.0,
         margin_vertical=92,
         support_box_color="#111827", support_box_opacity=0.48,

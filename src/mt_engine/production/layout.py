@@ -22,6 +22,12 @@ class OverflowPolicy(StrEnum):
     VISIBLE = "VISIBLE"
 
 
+class CrossAxisAlignment(StrEnum):
+    START = "START"
+    CENTER = "CENTER"
+    END = "END"
+
+
 @dataclass(frozen=True, slots=True)
 class Insets:
     left: int = 0
@@ -107,6 +113,7 @@ class ComposableBlockSpec:
     margin: Insets = Insets()
     padding: Insets = Insets()
     layout_direction: LayoutDirection = LayoutDirection.ABSOLUTE
+    cross_axis_alignment: CrossAxisAlignment = CrossAxisAlignment.START
     gap: int = 0
     order: int = 0
     overflow: OverflowPolicy = OverflowPolicy.FAIL
@@ -316,6 +323,11 @@ class _BlockTreeResolver:
             else LayoutDirection.ABSOLUTE
         )
         gap = parent_spec.gap if parent_spec is not None else 0
+        cross_alignment = (
+            parent_spec.cross_axis_alignment
+            if parent_spec is not None
+            else CrossAxisAlignment.START
+        )
         cursor_x = parent.content_left
         cursor_y = parent.content_top
         for spec in self.children.get(parent_id, []):
@@ -323,12 +335,30 @@ class _BlockTreeResolver:
                 parent.content_width - spec.margin.left - spec.margin.right
             )
             if direction == LayoutDirection.VERTICAL:
-                absolute_x = parent.content_left + spec.margin.left
+                cross_space = (
+                    parent.content_width - width - spec.margin.left - spec.margin.right
+                )
+                if cross_alignment == CrossAxisAlignment.CENTER:
+                    cross_offset = spec.margin.left + cross_space // 2
+                elif cross_alignment == CrossAxisAlignment.END:
+                    cross_offset = spec.margin.left + cross_space
+                else:
+                    cross_offset = spec.margin.left
+                absolute_x = parent.content_left + cross_offset
                 absolute_y = cursor_y + spec.margin.top
                 cursor_y = absolute_y + spec.height + spec.margin.bottom + gap
             elif direction == LayoutDirection.HORIZONTAL:
                 absolute_x = cursor_x + spec.margin.left
-                absolute_y = parent.content_top + spec.margin.top
+                cross_space = (
+                    parent.content_height - spec.height - spec.margin.top - spec.margin.bottom
+                )
+                if cross_alignment == CrossAxisAlignment.CENTER:
+                    cross_offset = spec.margin.top + cross_space // 2
+                elif cross_alignment == CrossAxisAlignment.END:
+                    cross_offset = spec.margin.top + cross_space
+                else:
+                    cross_offset = spec.margin.top
+                absolute_y = parent.content_top + cross_offset
                 cursor_x = absolute_x + width + spec.margin.right + gap
             else:
                 absolute_x = parent.content_left + spec.local_x + spec.margin.left

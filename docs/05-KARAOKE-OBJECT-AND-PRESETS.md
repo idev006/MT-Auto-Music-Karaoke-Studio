@@ -87,6 +87,18 @@ default. Top-level collision groups remain coordinator-owned; children never ins
 siblings. This supports the hierarchy Canvas -> Karaoke Region -> Lyric Line -> Word/Highlight
 without coupling typography to the video renderer.
 
+## Per-line font sizing and baseline spacing
+
+`line_font_mode=UNIFORM` selects one maximum fitting font size for every display line in an event.
+`line_font_mode=INDEPENDENT` fits each display line separately, then reduces only the necessary
+line sizes until the combined block fits. Text changes invalidate the event-local measurement.
+Inter-line distance is derived from the bundled font's FreeType line gap
+(`font height - ascent - descent`) and each line's actual top/bottom baseline extents; it is not a
+fixed visual guess. Preview evidence records line font sizes, inter-line gaps and baseline offsets.
+Each resolved line also owns a centered child block with explicit left, top, right and bottom
+bounds. The coordinator places subsequent sibling line blocks from previously resolved bounds,
+then centers the group within the karaoke content region. Siblings never place themselves.
+
 ## Creative ownership
 Creative Director sets style; Music Video Director sets motion/emotional intent; Motion Designer and Thai Typography Specialist specify look/readability; Rendering Engineer verifies engine parity; QA approves test renders. These are design responsibilities, not claims of hired staff.
 

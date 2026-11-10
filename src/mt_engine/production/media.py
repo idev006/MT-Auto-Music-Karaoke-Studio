@@ -8,13 +8,27 @@ import os
 import shutil
 import subprocess
 import unicodedata
+from dataclasses import dataclass
+from math import ceil
 from pathlib import Path
 from typing import Any
 
 from mutagen.id3 import APIC, ID3
 from PIL import Image, ImageFont
 
-from .karaoke_presets import DEFAULT_PRESET_ID, KaraokeVisualPreset, get_karaoke_preset
+from .karaoke_presets import (
+    DEFAULT_PRESET_ID,
+    KaraokeVisualPreset,
+    LineFontMode,
+    get_karaoke_preset,
+)
+from .layout import (
+    CanvasLayoutContext,
+    ComposableBlockSpec,
+    CrossAxisAlignment,
+    LayoutCoordinator,
+    LayoutDirection,
+)
 from .lyrics import TimedLine
 
 LANDSCAPE_CANVAS = (1920, 1080)
@@ -145,7 +159,7 @@ def _baseline_line_measurement(
 def _progressive_text(
     line: TimedLine,
     display_text: str,
-    display_font_size: int,
+    line_font_sizes: tuple[int, ...],
 ) -> str:
     """Preserve timing tags while applying the selected visual line break."""
     split_index = None
@@ -153,12 +167,16 @@ def _progressive_text(
         first_display_line = display_text.split("\n", 1)[0]
         split_index = len(first_display_line)
     position = 0
+    display_line_index = 0
     rendered_spans = []
     for span in line.highlight_spans:
         characters = []
         for character in span.text:
             if split_index is not None and position == split_index and character.isspace():
-                characters.append(r"\N")
+                display_line_index += 1
+                characters.append(
+                    rf"\N{{\fs{line_font_sizes[display_line_index]}}}"
+                )
             else:
                 characters.append(_ass_escape(character))
             position += 1
@@ -166,7 +184,75 @@ def _progressive_text(
             f"{{\\kf{max(1, round((span.end - span.start) * 100))}}}"
             + "".join(characters)
         )
-    return f"{{\\fs{display_font_size}}}" + "".join(rendered_spans)
+    return f"{{\\fs{line_font_sizes[0]}}}" + "".join(rendered_spans)
+
+
+@dataclass(frozen=True, slots=True)
+class _LineFit:
+    text: str
+    font_size: int
+    width: float
+    height: float
+    font_line_gap: float
+    top_from_baseline: float
+    bottom_from_baseline: float
+
+
+@dataclass(frozen=True, slots=True)
+class _TextLayout:
+    lines: tuple[_LineFit, ...]
+    inter_line_gaps: tuple[float, ...]
+
+    @property
+    def display_text(self) -> str:
+        return "\n".join(line.text for line in self.lines)
+
+    @property
+    def font_sizes(self) -> tuple[int, ...]:
+        return tuple(line.font_size for line in self.lines)
+
+    @property
+    def width(self) -> float:
+        return max(line.width for line in self.lines)
+
+    @property
+    def height(self) -> float:
+        return sum(line.height for line in self.lines) + sum(self.inter_line_gaps)
+
+    @property
+    def baseline_offsets(self) -> tuple[float, ...]:
+        offsets = []
+        cursor = 0.0
+        previous: _LineFit | None = None
+        for index, line in enumerate(self.lines):
+            decoration = line.height - (
+                line.bottom_from_baseline - line.top_from_baseline
+            )
+            half_decoration = decoration / 2
+            if previous is None:
+                cursor = -line.top_from_baseline + half_decoration
+            else:
+                previous_decoration = previous.height - (
+                    previous.bottom_from_baseline - previous.top_from_baseline
+                )
+                cursor += (
+                    previous.bottom_from_baseline
+                    + previous_decoration / 2
+                    + self.inter_line_gaps[index - 1]
+                    - line.top_from_baseline
+                    + half_decoration
+                )
+            offsets.append(cursor)
+            previous = line
+        return tuple(offsets)
+
+
+def _sized_ass_text(display_text: str, font_sizes: tuple[int, ...]) -> str:
+    lines = display_text.split("\n")
+    return r"\N".join(
+        f"{{\\fs{font_size}}}{_ass_escape(text)}"
+        for text, font_size in zip(lines, font_sizes, strict=True)
+    )
 
 
 def _layout_plain_text(
@@ -174,51 +260,112 @@ def _layout_plain_text(
     preset: KaraokeVisualPreset,
     canvas: tuple[int, int],
     font_path: Path | None = None,
-) -> tuple[str, int, float, float]:
+) -> _TextLayout:
     """Maximize each lyric event independently using shaped font measurements."""
     _region, content_block = preset.block_tree_for(canvas)
     safe_width = content_block.width
     allowed_height = content_block.height
     boundaries = [index for index, character in enumerate(text) if character.isspace()]
 
-    def metrics(value: str, size: int) -> tuple[float, float]:
+    def line_fit(value: str, size: int) -> _LineFit:
         decoration = 2 * preset.outline_width + preset.shadow_depth
         if font_path is not None:
             font = ImageFont.truetype(str(font_path), size)
             left, top, right, bottom = font.getbbox(value, anchor="ls")
             ink_height = max(1, bottom - top)
             ink_width = max(font.getlength(value), right - left)
-            return float(ink_width + decoration), float(ink_height + decoration)
-        return (
+            ascent, descent = font.getmetrics()
+            font_line_gap = max(0, font.font.height - ascent - descent)
+            return _LineFit(
+                value,
+                size,
+                float(ink_width + decoration),
+                float(ink_height + decoration),
+                float(font_line_gap),
+                float(top),
+                float(bottom),
+            )
+        return _LineFit(
+            value,
+            size,
             _visible_character_count(value) * size * 0.56 + decoration,
             size * 1.15 + decoration,
+            0.0,
+            float(-size),
+            float(size * 0.15),
         )
+
+    def gap_between(left: _LineFit, right: _LineFit) -> float:
+        return max(left.font_line_gap, right.font_line_gap)
+
+    def largest_width_fit(value: str) -> _LineFit | None:
+        for candidate_size in range(maximum_size, preset.minimum_font_size - 1, -1):
+            candidate = line_fit(value, candidate_size)
+            if candidate.width <= safe_width and candidate.height <= allowed_height:
+                return candidate
+        return None
 
     maximum_size = preset.maximum_font_size_for(canvas)
     for size in range(maximum_size, preset.minimum_font_size - 1, -1):
-        one_width, one_height = metrics(text, size)
-        if one_width <= safe_width and one_height <= allowed_height:
-            return text, size, one_width, one_height
+        one = line_fit(text, size)
+        if one.width <= safe_width and one.height <= allowed_height:
+            return _TextLayout((one,), ())
         if preset.maximum_lines < 2:
             continue
-        candidates: list[tuple[float, str, float, float]] = []
+        if preset.line_font_mode == LineFontMode.INDEPENDENT:
+            break
+        candidates: list[tuple[float, _TextLayout]] = []
         for split in boundaries:
             left, right = text[:split].rstrip(), text[split + 1 :].lstrip()
             if not left or not right:
                 continue
-            left_width, line_height = metrics(left, size)
-            right_width, right_height = metrics(right, size)
-            total_height = (
-                line_height + right_height + size * preset.inter_line_spacing_ratio
+            left_fit = line_fit(left, size)
+            right_fit = line_fit(right, size)
+            layout = _TextLayout(
+                (left_fit, right_fit), (gap_between(left_fit, right_fit),)
             )
-            widest = max(left_width, right_width)
-            if widest <= safe_width and total_height <= allowed_height:
-                candidates.append(
-                    (abs(left_width - right_width), f"{left}\n{right}", widest, total_height)
-                )
+            if layout.width <= safe_width and layout.height <= allowed_height:
+                candidates.append((abs(left_fit.width - right_fit.width), layout))
         if candidates:
-            _imbalance, display, widest, total_height = min(candidates)
-            return display, size, widest, total_height
+            _imbalance, layout = min(candidates, key=lambda item: item[0])
+            return layout
+    if preset.line_font_mode == LineFontMode.INDEPENDENT and preset.maximum_lines >= 2:
+        independent_candidates: list[tuple[tuple[float, ...], _TextLayout]] = []
+        for split in boundaries:
+            left, right = text[:split].rstrip(), text[split + 1 :].lstrip()
+            if not left or not right:
+                continue
+            left_fit = largest_width_fit(left)
+            right_fit = largest_width_fit(right)
+            if left_fit is None or right_fit is None:
+                continue
+            while True:
+                gap = gap_between(left_fit, right_fit)
+                layout = _TextLayout((left_fit, right_fit), (gap,))
+                if layout.height <= allowed_height:
+                    break
+                reducible = [
+                    fit for fit in (left_fit, right_fit)
+                    if fit.font_size > preset.minimum_font_size
+                ]
+                if not reducible:
+                    layout = None
+                    break
+                to_reduce = max(reducible, key=lambda fit: (fit.height, fit.font_size))
+                reduced = line_fit(to_reduce.text, to_reduce.font_size - 1)
+                if to_reduce is left_fit:
+                    left_fit = reduced
+                else:
+                    right_fit = reduced
+            if layout is not None:
+                score = (
+                    -min(left_fit.font_size, right_fit.font_size),
+                    -(left_fit.font_size + right_fit.font_size),
+                    abs(left_fit.width - right_fit.width),
+                )
+                independent_candidates.append((score, layout))
+        if independent_candidates:
+            return min(independent_candidates, key=lambda item: item[0])[1]
     raise ValueError(
         f"Lyric text cannot fit preset {preset.preset_id!r} above minimum font size "
         f"{preset.minimum_font_size}: {text!r}"
@@ -257,22 +404,24 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     events = []
     layout_evidence = []
     for line_index, line in enumerate(lines):
-        display_text, display_font_size, text_width, text_height = _layout_plain_text(
+        text_layout = _layout_plain_text(
             line.text, selected_preset, canvas, font_path
         )
+        display_text = text_layout.display_text
+        line_font_sizes = text_layout.font_sizes
+        display_font_size = max(line_font_sizes)
+        text_width = text_layout.width
+        text_height = text_layout.height
         if progressive and line.highlight_spans:
-            text = _progressive_text(line, display_text, display_font_size)
+            text = _progressive_text(line, display_text, line_font_sizes)
         elif progressive:
             duration_cs = max(1, round((line.end - line.start) * 100))
             text = (
-                f"{{\\fs{display_font_size}}}{{\\kf{duration_cs}}}"
-                f"{_ass_escape(display_text)}"
+                f"{{\\kf{duration_cs}}}"
+                f"{_sized_ass_text(display_text, line_font_sizes)}"
             )
         else:
-            size_override = (
-                f"{{\\fs{display_font_size}}}"
-            )
-            text = size_override + _ass_escape(display_text)
+            text = _sized_ass_text(display_text, line_font_sizes)
         region_block, content_block = selected_preset.block_tree_for(canvas)
         virtual_left = region_block.absolute_x
         virtual_top = region_block.absolute_y
@@ -298,6 +447,39 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         text_anchor_y = (
             virtual_top + virtual_height - selected_preset.virtual_box_padding_bottom_pixels
         )
+        integer_line_heights = [ceil(item.height) for item in text_layout.lines]
+        integer_line_gaps = [round(item) for item in text_layout.inter_line_gaps]
+        line_group_height = sum(integer_line_heights) + sum(integer_line_gaps)
+        line_group_width = ceil(text_layout.width)
+        line_group_left = round(text_anchor_x - line_group_width / 2)
+        line_group_top = round(content_block.absolute_y + content_height - line_group_height)
+        line_specs = [
+            ComposableBlockSpec(
+                "karaoke-line-group",
+                None,
+                line_group_width,
+                line_group_height,
+                local_x=line_group_left,
+                local_y=line_group_top,
+                layout_direction=LayoutDirection.VERTICAL,
+                cross_axis_alignment=CrossAxisAlignment.CENTER,
+                gap=integer_line_gaps[0] if integer_line_gaps else 0,
+            )
+        ]
+        line_specs.extend(
+            ComposableBlockSpec(
+                f"karaoke-line-{index + 1}",
+                "karaoke-line-group",
+                ceil(item.width),
+                integer_line_heights[index],
+                order=index,
+            )
+            for index, item in enumerate(text_layout.lines)
+        )
+        resolved_line_blocks = LayoutCoordinator(
+            CanvasLayoutContext(*canvas)
+        ).compose(tuple(line_specs))
+        line_blocks = resolved_line_blocks[1:]
         text = (
             f"{{\\an2\\pos({text_anchor_x:.1f},{text_anchor_y:.1f})}}" + text
         )
@@ -318,6 +500,28 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 "canonical_text": line.text,
                 "display_text": display_text,
                 "font_size": display_font_size,
+                "line_font_mode": selected_preset.line_font_mode.value,
+                "line_font_sizes": list(line_font_sizes),
+                "inter_line_gaps_pixels": [
+                    round(value, 2) for value in text_layout.inter_line_gaps
+                ],
+                "baseline_offsets_pixels": [
+                    round(value, 2) for value in text_layout.baseline_offsets
+                ],
+                "line_boxes": [
+                    {
+                        "block_id": block.block_id,
+                        "left_pixels": block.absolute_x,
+                        "top_pixels": block.absolute_y,
+                        "right_pixels": block.right,
+                        "bottom_pixels": block.bottom,
+                        "width_pixels": block.width,
+                        "height_pixels": block.height,
+                        "center_x_pixels": block.absolute_x + block.width / 2,
+                        "center_y_pixels": block.absolute_y + block.height / 2,
+                    }
+                    for block in line_blocks
+                ],
                 "display_line_count": display_text.count("\n") + 1,
                 "canvas": list(canvas),
                 "safe_width_pixels": round(content_width, 2),
@@ -333,9 +537,11 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 "box_opacity": selected_preset.support_box_opacity,
                 "line_measurements": [
                     _baseline_line_measurement(
-                        display_line, font_path, display_font_size, selected_preset
+                        display_line, font_path, line_font_size, selected_preset
                     )
-                    for display_line in display_text.split("\n")
+                    for display_line, line_font_size in zip(
+                        display_text.split("\n"), line_font_sizes, strict=True
+                    )
                 ],
                 "virtual_box": {
                     "left_pixels": virtual_left,

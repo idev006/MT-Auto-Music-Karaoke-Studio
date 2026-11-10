@@ -4,6 +4,7 @@ from mt_engine.production.layout import (
     CanvasLayoutContext,
     CollisionPolicy,
     ComposableBlockSpec,
+    CrossAxisAlignment,
     Insets,
     LayoutCoordinator,
     LayoutDirection,
@@ -116,3 +117,29 @@ def test_nested_blocks_fail_closed_on_parent_overflow():
                 ),
             )
         )
+
+
+def test_vertical_sibling_blocks_are_centered_and_do_not_overlap():
+    coordinator = LayoutCoordinator(CanvasLayoutContext(1080, 1920))
+    group, first, second = coordinator.compose(
+        (
+            ComposableBlockSpec(
+                "line-group",
+                None,
+                900,
+                310,
+                local_x=90,
+                local_y=1500,
+                layout_direction=LayoutDirection.VERTICAL,
+                cross_axis_alignment=CrossAxisAlignment.CENTER,
+                gap=10,
+            ),
+            ComposableBlockSpec("line-1", "line-group", 500, 140),
+            ComposableBlockSpec("line-2", "line-group", 800, 160),
+        )
+    )
+
+    assert first.absolute_x == group.absolute_x + (group.width - first.width) // 2
+    assert second.absolute_x == group.absolute_x + (group.width - second.width) // 2
+    assert second.absolute_y == first.bottom + 10
+    assert first.bottom <= second.absolute_y
