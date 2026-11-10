@@ -76,7 +76,48 @@ def _ass_escape(text: str) -> str:
 
 
 def _visible_character_count(text: str) -> int:
-    return sum(not unicodedata.combining(character) and not character.isspace() for character in text)
+    return sum(
+        not unicodedata.category(character).startswith("M")
+        and not character.isspace()
+        for character in text
+    )
+
+
+def _baseline_line_measurement(
+    text: str,
+    font_path: Path | None,
+    font_size: int,
+) -> dict[str, object]:
+    """Expose the ฒ-based estimate without using it as final fit authority."""
+    baseline_count = _visible_character_count(text)
+    combining_count = sum(
+        unicodedata.category(character).startswith("M") for character in text
+    )
+    space_count = sum(character.isspace() for character in text)
+    if font_path is None:
+        representative_width = font_size * 0.56
+        space_width = font_size * 0.25
+        actual_width = baseline_count * font_size * 0.56 + space_count * space_width
+        measurement = "fallback_estimate"
+    else:
+        font = ImageFont.truetype(str(font_path), font_size)
+        representative_width = float(font.getlength("ฒ"))
+        space_width = float(font.getlength(" "))
+        actual_width = float(font.getlength(text))
+        measurement = "freetype_glyph_advance"
+    return {
+        "text": text,
+        "baseline_character_count": baseline_count,
+        "combining_mark_count": combining_count,
+        "space_count": space_count,
+        "representative_character": "ฒ",
+        "representative_width_pixels": round(representative_width, 2),
+        "estimated_width_pixels": round(
+            baseline_count * representative_width + space_count * space_width, 2
+        ),
+        "actual_shaped_width_pixels": round(actual_width, 2),
+        "measurement": measurement,
+    }
 
 
 def _progressive_text(
@@ -282,6 +323,12 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 "box_top_pixels": round(box_top, 2),
                 "box_color": selected_preset.support_box_color,
                 "box_opacity": selected_preset.support_box_opacity,
+                "line_measurements": [
+                    _baseline_line_measurement(
+                        display_line, font_path, display_font_size
+                    )
+                    for display_line in display_text.split("\n")
+                ],
                 "virtual_box": {
                     "left_pixels": virtual_left,
                     "top_pixels": virtual_top,
