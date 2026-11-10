@@ -36,12 +36,14 @@ def generate_preset_previews(
     for preset in selected:
         ass_path = output_dir / f"{preset.preset_id}.ass"
         png_path = output_dir / f"{preset.preset_id}.png"
-        write_ass(
+        font_asset = fonts_dir / preset.font_asset_file
+        layout = write_ass(
             (TimedLine(0.0, 10.0, text),),
             ass_path,
             canvas=canvas,
             progressive=False,
             visual_preset=preset,
+            font_path=font_asset,
         )
         render_ass_preview(
             ffmpeg,
@@ -51,7 +53,6 @@ def generate_preset_previews(
             canvas=canvas,
             fonts_dir=fonts_dir,
         )
-        font_asset = fonts_dir / preset.font_asset_file
         entries.append(
             {
                 "preset_id": preset.preset_id,
@@ -63,6 +64,7 @@ def generate_preset_previews(
                 "ass": ass_path.name,
                 "png": png_path.name,
                 "png_sha256": sha256_file(png_path),
+                "layout": layout[0],
             }
         )
     contact_sheet = _contact_sheet(output_dir, entries, canvas)

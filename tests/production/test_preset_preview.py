@@ -15,6 +15,10 @@ def test_preview_generator_creates_manifest_and_contact_sheet(tmp_path: Path, mo
     fonts.mkdir()
     (fonts / "THSarabun Bold.ttf").write_bytes(b"font")
 
+    def fake_write_ass(_lines, destination, **_kwargs):
+        destination.write_text("ASS", encoding="utf-8")
+        return ({"font_size": 100, "display_line_count": 2},)
+
     def fake_render(_ffmpeg, *, image, ass_path, destination, canvas, fonts_dir):
         assert image == background.resolve()
         assert canvas == (1080, 1920)
@@ -23,6 +27,7 @@ def test_preview_generator_creates_manifest_and_contact_sheet(tmp_path: Path, mo
         Image.new("RGB", canvas, "navy").save(destination)
 
     monkeypatch.setattr(preset_preview, "render_ass_preview", fake_render)
+    monkeypatch.setattr(preset_preview, "write_ass", fake_write_ass)
 
     result = preset_preview.generate_preset_previews(
         background=background,
@@ -36,3 +41,4 @@ def test_preview_generator_creates_manifest_and_contact_sheet(tmp_path: Path, mo
     assert result["preset_count"] == 2
     assert Path(str(result["manifest"])).is_file()
     assert Path(str(result["contact_sheet"])).is_file()
+    assert result["previews"][0]["layout"]["font_size"] == 100

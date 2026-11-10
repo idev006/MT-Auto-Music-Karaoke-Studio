@@ -376,6 +376,7 @@ def produce_song(
         canvas=canvas,
         progressive=verified_lock is not None,
         visual_preset=selected_karaoke_preset,
+        font_path=selected_font_file,
     )
     staged_mp4 = staging / "karaoke.mp4"
     video_probe = run_ffmpeg_render(

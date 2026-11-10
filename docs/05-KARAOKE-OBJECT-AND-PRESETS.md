@@ -67,6 +67,13 @@ required to distinguish active highlight behavior. Identical PNG hashes across s
 static presets are diagnostic evidence that their visible inactive presentation is insufficiently
 different.
 
+Font fitting is event-local: each lyric line independently selects the largest configured font
+size whose measured FreeType glyph advance fits the preset safe width. The engine evaluates
+one-line and balanced two-line candidates, enforces the allowed text-height ratio and fails when
+no candidate remains above the preset minimum. Preview manifests record the chosen font size,
+display text/line count, safe width, canvas and measurement method for every preset; no global
+song-level font size is imposed.
+
 ## Creative ownership
 Creative Director sets style; Music Video Director sets motion/emotional intent; Motion Designer and Thai Typography Specialist specify look/readability; Rendering Engineer verifies engine parity; QA approves test renders. These are design responsibilities, not claims of hired staff.
 

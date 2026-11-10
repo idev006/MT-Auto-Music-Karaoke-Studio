@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -71,5 +72,31 @@ def test_portrait_romantic_preset_is_large_and_wraps_long_thai_line(tmp_path: Pa
 
     content = destination.read_text(encoding="utf-8-sig")
     assert "Style: Karaoke,TH SarabunPSK,116," in content
+    event_size = int(re.search(r"\\fs(\d+)", content).group(1))
+    assert 116 < event_size <= 142
     assert "ไม่เคยทำให้ฉัน\\Nต้องทุกข์ร้อนใจ" in content
     assert ",145,1" in content
+
+
+def test_each_lyric_event_gets_an_independent_maximum_fitting_font_size(tmp_path: Path):
+    destination = tmp_path / "independent.ass"
+    lines = (
+        TimedLine(1.0, 3.0, "รักเธอ"),
+        TimedLine(3.0, 6.0, "เนื้อเพลงยาวพอสมควร ต้องลดขนาด"),
+    )
+
+    write_ass(
+        lines,
+        destination,
+        canvas=PORTRAIT_CANVAS,
+        progressive=False,
+        visual_preset="romantic-rose",
+    )
+
+    events = [
+        row for row in destination.read_text(encoding="utf-8-sig").splitlines()
+        if row.startswith("Dialogue:")
+    ]
+    sizes = [int(re.search(r"\\fs(\d+)", event).group(1)) for event in events]
+    assert sizes[0] == 142
+    assert sizes[1] < sizes[0]

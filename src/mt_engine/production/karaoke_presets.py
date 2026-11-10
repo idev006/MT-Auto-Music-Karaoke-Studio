@@ -20,8 +20,12 @@ class KaraokeVisualPreset:
     font_size: int = 56
     portrait_font_size: int = 108
     minimum_font_size: int = 68
+    maximum_font_size: int = 84
+    portrait_maximum_font_size: int = 142
     maximum_lines: int = 2
     safe_width_ratio: float = 0.86
+    allowed_text_height_ratio: float = 0.20
+    inter_line_spacing_ratio: float = 0.08
     active_color: str = "&H00FFFFFF"
     inactive_color: str = "&H0000D7FF"
     outline_color: str = "&H00101010"
@@ -56,6 +60,13 @@ class KaraokeVisualPreset:
         return (
             self.portrait_margin_vertical if canvas[1] > canvas[0]
             else self.margin_vertical
+        )
+
+    def maximum_font_size_for(self, canvas: tuple[int, int]) -> int:
+        return (
+            self.portrait_maximum_font_size
+            if canvas[1] > canvas[0]
+            else self.maximum_font_size
         )
 
     def ass_style(self, canvas: tuple[int, int] = (1920, 1080)) -> str:
