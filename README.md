@@ -47,4 +47,9 @@ This is a vertical slice, not a production release. The CLI currently runs the m
 
 OpenRouter is an optional, budgeted second-opinion adapter for timestamped transcription and rendered-frame QC. Copy `config/openrouter.env.example` to the Git-ignored `config/openrouter.env`, set `OPENROUTER_API_KEY`, and select `OPENROUTER_MODE=off|auto|always`. `off` is local-only. `auto` escalates transcription only when local coverage, alignment evidence, or structural validation is weak, and skips Vision QC when local evidence does not require it. `always` requests a cloud transcription second opinion and runs eligible Vision QC for every song. The shared per-song ledger rejects reported spend above `OPENROUTER_MAX_COST_USD_PER_SONG`, whose accepted maximum is USD 0.20; the request guard prevents a new request when insufficient budget remains. Never put the real key in the example file, source code, command line, logs, or Git. The CLI can override the configured policy for one run with `--openrouter-mode off|auto|always`.
 
+The built-in karaoke visual catalog contains 12 versioned presets in Classic, Modern, Neon,
+Romantic, Fun and Accessible groups. Run `mt-karaoke list-presets` to inspect them and select one
+with `produce-song --karaoke-preset romantic-rose`. Presets change ASS presentation only; lyric
+text and timing remain owned by their existing SSOT.
+
 Vision QC verifies rendered text only; it does not replace the ASR/audio temporal-sync gate. The adapter requests provider data collection denial, fails closed to `REVIEW_REQUIRED`, and records model results without recording the API key.

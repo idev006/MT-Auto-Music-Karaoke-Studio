@@ -13,6 +13,7 @@ from uuid import uuid4
 from mutagen.mp3 import MP3
 
 from .intake import discover_song
+from .karaoke_presets import DEFAULT_PRESET_ID, get_karaoke_preset
 from .lyrics import extract_lyrics, inspect_embedded_lyrics, propose_timing, transcribe
 from .media import embed_cover, run_ffmpeg_render, sha256_file, video_canvas, write_ass
 from .openrouter_config import (
@@ -76,11 +77,13 @@ def produce_song(
     single_image_for_both: bool = False,
     accept_unreviewed_timing: bool = False,
     ffmpeg_preset: str = "veryfast",
+    karaoke_preset: str = DEFAULT_PRESET_ID,
     openrouter_config: Path = Path("config/openrouter.env"),
     openrouter_mode: str | None = None,
     timing_lock: Path | None = None,
 ) -> ProductionResult:
     assets = discover_song(source_dir, single_image_for_both=single_image_for_both)
+    selected_karaoke_preset = get_karaoke_preset(karaoke_preset)
     if timing_lock is None and not accept_unreviewed_timing:
         raise ValueError("This first ASR-guided timing proposal requires explicit test approval")
     ffmpeg = (ffmpeg_root / "bin" / "ffmpeg.exe").resolve()
@@ -335,6 +338,7 @@ def produce_song(
                     "openrouter_mode": router_config.mode.value,
                     "openrouter_spend": router_spend.to_primitive(),
                 },
+                "karaoke_visual_preset": selected_karaoke_preset.to_primitive(),
                 "started_at": started_at,
                 "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             },
@@ -361,7 +365,13 @@ def produce_song(
 
     canvas = video_canvas(assets.background)
     ass_path = staging / "karaoke.ass"
-    write_ass(timing, ass_path, canvas=canvas, progressive=verified_lock is not None)
+    write_ass(
+        timing,
+        ass_path,
+        canvas=canvas,
+        progressive=verified_lock is not None,
+        visual_preset=selected_karaoke_preset,
+    )
     staged_mp4 = staging / "karaoke.mp4"
     video_probe = run_ffmpeg_render(
         ffmpeg,
@@ -493,6 +503,7 @@ def produce_song(
             "openrouter_mode": router_config.mode.value,
             "openrouter_spend": router_spend.to_primitive(),
         },
+        "karaoke_visual_preset": selected_karaoke_preset.to_primitive(),
         "started_at": started_at,
         "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }

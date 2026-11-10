@@ -35,6 +35,17 @@ Use normalized geometry 0–1 with explicit reference coordinate rules. SSOT ret
 | Corporate & Official | Corporate Blue; Official White; Institutional Gold; Leadership; Formal Lower Third |
 | High Readability | Maximum Contrast; Large Text; Strong Outline; Dark Caption Bar; Universal Readable |
 
+## Implemented MVP catalog
+
+The renderer currently ships 12 immutable presets across six groups: Classic (`classic-gold`,
+`classic-blue`), Modern (`modern-minimal`, `glass-caption`), Neon (`neon-pink`, `neon-blue`),
+Romantic (`romantic-rose`, `sunset-love`), Fun (`candy-pop`, `festival-bold`) and Accessible
+(`maximum-contrast`, `dark-caption-bar`). Each preset has schema version 1 and a deterministic
+content SHA-256 recorded in the run manifest. `list-presets` exposes the catalog and
+`produce-song --karaoke-preset <preset-id>` selects one without changing canonical lyrics or any
+timeline field. The remaining target catalog is backlog and must be released only with Thai
+typography and preview/final parity evidence.
+
 ## Creative ownership
 Creative Director sets style; Music Video Director sets motion/emotional intent; Motion Designer and Thai Typography Specialist specify look/readability; Rendering Engineer verifies engine parity; QA approves test renders. These are design responsibilities, not claims of hired staff.
 

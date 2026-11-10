@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from mt_engine.production import produce_song
+from mt_engine.production.karaoke_presets import DEFAULT_PRESET_ID, list_karaoke_presets
 from mt_engine.production.openrouter_vision import rerun_vision_qc
 from mt_engine.production.release import release_reviewed_candidate
 
@@ -23,6 +24,7 @@ def _parser() -> argparse.ArgumentParser:
     produce.add_argument("--model", default="base")
     produce.add_argument("--cpu-threads", type=int, default=8)
     produce.add_argument("--ffmpeg-preset", default="veryfast")
+    produce.add_argument("--karaoke-preset", default=DEFAULT_PRESET_ID)
     produce.add_argument("--single-image-for-both", action="store_true")
     produce.add_argument("--accept-unreviewed-timing", action="store_true")
     produce.add_argument(
@@ -50,6 +52,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     release.add_argument("--target", type=Path, required=True)
     release.add_argument("--signoff", type=Path, required=True)
+    commands.add_parser("list-presets", help="List built-in karaoke visual presets")
     return parser
 
 
@@ -69,6 +72,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             single_image_for_both=args.single_image_for_both,
             accept_unreviewed_timing=args.accept_unreviewed_timing,
             ffmpeg_preset=args.ffmpeg_preset,
+            karaoke_preset=args.karaoke_preset,
             openrouter_config=args.openrouter_config,
             openrouter_mode=args.openrouter_mode,
             timing_lock=args.timing_lock,
@@ -107,6 +111,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 indent=2,
             )
         )
+        return 0
+    if args.command == "list-presets":
+        print(json.dumps(list_karaoke_presets(), ensure_ascii=False, indent=2))
         return 0
     return 2
 

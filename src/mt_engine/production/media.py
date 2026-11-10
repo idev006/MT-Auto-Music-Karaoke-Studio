@@ -12,6 +12,7 @@ from typing import Any
 from mutagen.id3 import APIC, ID3
 from PIL import Image
 
+from .karaoke_presets import DEFAULT_PRESET_ID, KaraokeVisualPreset, get_karaoke_preset
 from .lyrics import TimedLine
 
 LANDSCAPE_CANVAS = (1920, 1080)
@@ -78,8 +79,14 @@ def write_ass(
     *,
     canvas: tuple[int, int] = LANDSCAPE_CANVAS,
     progressive: bool = True,
+    visual_preset: str | KaraokeVisualPreset = DEFAULT_PRESET_ID,
 ) -> None:
     width, height = canvas
+    selected_preset = (
+        get_karaoke_preset(visual_preset)
+        if isinstance(visual_preset, str)
+        else visual_preset
+    )
     header = f"""[Script Info]
 ScriptType: v4.00+
 PlayResX: {width}
@@ -89,7 +96,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name,Fontname,Fontsize,PrimaryColour,SecondaryColour,OutlineColour,BackColour,Bold,Italic,Underline,StrikeOut,ScaleX,ScaleY,Spacing,Angle,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Karaoke,Tahoma,56,&H00FFFFFF,&H0000D7FF,&H00101010,&H80000000,-1,0,0,0,100,100,0,0,1,4,1,2,120,120,70,1
+{selected_preset.ass_style()}
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
@@ -129,7 +136,7 @@ def run_ffmpeg_render(
     width, height = canvas or video_canvas(image)
     filtergraph = (
         f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
-        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,ass=karaoke.ass[v]"
+        f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,ass={ass_path.name}[v]"
     )
     command = [
         str(ffmpeg),
