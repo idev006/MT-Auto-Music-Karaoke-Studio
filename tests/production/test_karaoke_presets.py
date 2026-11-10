@@ -79,7 +79,9 @@ def test_portrait_romantic_preset_is_large_and_wraps_long_thai_line(tmp_path: Pa
     assert "Style: Karaoke,TH SarabunPSK,116," in content
     event_size = int(re.search(r"\\fs(\d+)", content).group(1))
     assert 140 < event_size <= 512
-    assert re.search(r"ไม่เคยทำให้ฉัน\\N\{\\fs\d+\}ต้องทุกข์ร้อนใจ", content)
+    assert "ไม่เคยทำให้ฉัน" in content
+    assert "ต้องทุกข์ร้อนใจ" in content
+    assert sum(row.startswith("Dialogue: 1,") for row in content.splitlines()) == 2
     assert ",145,1" in content
 
 
@@ -256,3 +258,12 @@ def test_uniform_and_independent_line_font_modes(tmp_path: Path):
     first_box, second_box = independent_evidence["line_boxes"]
     assert abs(first_box["center_x_pixels"] - second_box["center_x_pixels"]) <= 0.5
     assert first_box["bottom_pixels"] <= second_box["top_pixels"]
+    assert independent_evidence["render_placement_mode"] == "PER_LINE_BOX"
+    independent_events = [
+        row
+        for row in (tmp_path / "independent.ass").read_text(encoding="utf-8-sig").splitlines()
+        if row.startswith("Dialogue: 1,")
+    ]
+    assert len(independent_events) == 2
+    assert all("\\an5\\pos(" in event for event in independent_events)
+    assert all("\\N" not in event for event in independent_events)

@@ -421,7 +421,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                 f"{_sized_ass_text(display_text, line_font_sizes)}"
             )
         else:
-            text = _sized_ass_text(display_text, line_font_sizes)
+            text = ""
         region_block, content_block = selected_preset.block_tree_for(canvas)
         virtual_left = region_block.absolute_x
         virtual_top = region_block.absolute_y
@@ -480,9 +480,10 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             CanvasLayoutContext(*canvas)
         ).compose(tuple(line_specs))
         line_blocks = resolved_line_blocks[1:]
-        text = (
-            f"{{\\an2\\pos({text_anchor_x:.1f},{text_anchor_y:.1f})}}" + text
-        )
+        if progressive:
+            text = (
+                f"{{\\an2\\pos({text_anchor_x:.1f},{text_anchor_y:.1f})}}" + text
+            )
         red = selected_preset.support_box_color[1:3]
         green = selected_preset.support_box_color[3:5]
         blue = selected_preset.support_box_color[5:7]
@@ -522,6 +523,9 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
                     }
                     for block in line_blocks
                 ],
+                "render_placement_mode": (
+                    "LIBASS_MULTILINE_COMPAT" if progressive else "PER_LINE_BOX"
+                ),
                 "display_line_count": display_text.count("\n") + 1,
                 "canvas": list(canvas),
                 "safe_width_pixels": round(content_width, 2),
@@ -570,10 +574,25 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             f"Dialogue: 0,{_ass_time(line.start)},{_ass_time(line.end)},Karaoke,,0,0,0,,"
             f"{box_drawing}"
         )
-        events.append(
-            f"Dialogue: 1,{_ass_time(line.start)},{_ass_time(line.end)},Karaoke,,0,0,0,,"
-            f"{text}"
-        )
+        if progressive:
+            events.append(
+                f"Dialogue: 1,{_ass_time(line.start)},{_ass_time(line.end)},Karaoke,,0,0,0,,"
+                f"{text}"
+            )
+        else:
+            for display_line, font_size, block in zip(
+                display_text.split("\n"), line_font_sizes, line_blocks, strict=True
+            ):
+                center_x = block.absolute_x + block.width / 2
+                center_y = block.absolute_y + block.height / 2
+                line_text = (
+                    f"{{\\an5\\pos({center_x:.1f},{center_y:.1f})\\fs{font_size}}}"
+                    f"{_ass_escape(display_line)}"
+                )
+                events.append(
+                    f"Dialogue: 1,{_ass_time(line.start)},{_ass_time(line.end)},"
+                    f"Karaoke,,0,0,0,,{line_text}"
+                )
     destination.write_text(header + "\n".join(events) + "\n", encoding="utf-8-sig")
     return tuple(layout_evidence)
 

@@ -98,6 +98,11 @@ fixed visual guess. Preview evidence records line font sizes, inter-line gaps an
 Each resolved line also owns a centered child block with explicit left, top, right and bottom
 bounds. The coordinator places subsequent sibling line blocks from previously resolved bounds,
 then centers the group within the karaoke content region. Siblings never place themselves.
+Static/non-progressive ASS output renders each line as a separate `\an5\pos(...)` event at its
+resolved child-box center, so libass cannot replace coordinator spacing. Progressive `\kf` output
+temporarily retains multiline compatibility placement until timing spans can be partitioned across
+independent ASS events without changing highlight semantics; manifests identify the active render
+placement mode.
 
 ## Creative ownership
 Creative Director sets style; Music Video Director sets motion/emotional intent; Motion Designer and Thai Typography Specialist specify look/readability; Rendering Engineer verifies engine parity; QA approves test renders. These are design responsibilities, not claims of hired staff.
