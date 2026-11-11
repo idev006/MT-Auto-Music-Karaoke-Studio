@@ -162,6 +162,9 @@ def extract_qc_frames(
     destination: Path,
 ) -> tuple[dict[str, object], ...]:
     destination.mkdir(parents=True, exist_ok=True)
+    for stale_frame in destination.glob("sample_*.png"):
+        if stale_frame.is_file():
+            stale_frame.unlink()
     evidence = []
     for sample_number, sample in enumerate(samples, start=1):
         frame = destination / f"sample_{sample_number:02d}_{sample.timestamp:07.2f}s.png"
@@ -185,7 +188,9 @@ def extract_qc_frames(
         with Image.open(frame) as image:
             grayscale = image.convert("L")
             roi = grayscale.crop((0, int(image.height * 0.82), image.width, image.height))
-            bright_pixels = sum(1 for value in roi.getdata() if value >= 180)
+            bright_pixels = sum(
+                1 for value in roi.get_flattened_data() if value >= 180
+            )
         evidence.append(
             {
                 **asdict(sample),

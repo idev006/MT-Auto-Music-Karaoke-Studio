@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from collections.abc import Callable, Mapping
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,10 +13,19 @@ from uuid import uuid4
 
 from mutagen.mp3 import MP3
 
+from mt_engine.paths import PathManager
+
 from .intake import discover_song
 from .karaoke_presets import DEFAULT_PRESET_ID, get_karaoke_preset
-from .lyrics import extract_lyrics, inspect_embedded_lyrics, propose_timing, transcribe
-from .media import embed_cover, run_ffmpeg_render, sha256_file, video_canvas, write_ass
+from .lyrics import propose_timing, resolve_canonical_lyrics, transcribe
+from .media import (
+    embed_cover,
+    run_ffmpeg_render,
+    sha256_file,
+    verify_rendered_video,
+    video_canvas,
+    write_ass,
+)
 from .openrouter_config import (
     OpenRouterConfig,
     OpenRouterSpendLedger,
@@ -61,10 +71,123 @@ def _tool_version(executable: Path) -> str:
 
 
 def _write_json(path: Path, payload: object) -> None:
-    path.write_text(
+    temporary = path.with_suffix(path.suffix + ".partial")
+    temporary.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True),
         encoding="utf-8",
     )
+    os.replace(temporary, path)
+
+
+def _write_run_state(
+    production_data: Path,
+    *,
+    job_id: str,
+    run_id: str,
+    stage: str,
+    detail: str,
+    artifacts: Mapping[str, str] | None = None,
+) -> None:
+    _write_json(
+        production_data / "run_state.json",
+        {
+            "schema_version": 1,
+            "job_id": job_id,
+            "run_id": run_id,
+            "stage": stage,
+            "detail": detail,
+            "artifacts": dict(artifacts or {}),
+            "updated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        },
+    )
+
+
+def _read_run_state(production_data: Path) -> dict[str, object] | None:
+    path = production_data / "run_state.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    artifacts = payload.get("artifacts")
+    if payload.get("stage") != "COMPLETE" or (
+        isinstance(artifacts, dict) and artifacts.get("source_sha256")
+    ):
+        return payload
+    try:
+        manifest = json.loads(
+            (production_data / "manifest.json").read_text(encoding="utf-8")
+        )
+        if manifest.get("run_id") != payload.get("run_id"):
+            return payload
+        diagnostic = manifest["outputs"]["diagnostic_candidate"]
+        ass_path = production_data / "karaoke.ass"
+        payload["artifacts"] = {
+            "source_sha256": manifest["source"]["mp3_sha256"],
+            "background_sha256": manifest["source"]["background_sha256"],
+            "ass_sha256": sha256_file(ass_path),
+            "rendered_mp4": diagnostic["path"],
+            "rendered_mp4_sha256": diagnostic["sha256"],
+        }
+    except (OSError, KeyError, TypeError, UnicodeError, json.JSONDecodeError):
+        pass
+    return payload
+
+
+def _reusable_diagnostic_render(
+    prior_state: Mapping[str, object] | None,
+    target_dir: Path,
+    *,
+    source_sha256: str,
+    background_sha256: str,
+    ass_sha256: str,
+) -> Path | None:
+    if not prior_state or prior_state.get("stage") not in {"QC", "COMPLETE"}:
+        return None
+    artifacts = prior_state.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return None
+    expected = {
+        "source_sha256": source_sha256,
+        "background_sha256": background_sha256,
+        "ass_sha256": ass_sha256,
+    }
+    if any(artifacts.get(key) != value for key, value in expected.items()):
+        return None
+    relative = artifacts.get("rendered_mp4")
+    expected_video_hash = artifacts.get("rendered_mp4_sha256")
+    if not isinstance(relative, str) or not isinstance(expected_video_hash, str):
+        return None
+    candidate = (target_dir / relative).resolve()
+    try:
+        candidate.relative_to(target_dir.resolve())
+    except ValueError:
+        return None
+    if not candidate.is_file() or sha256_file(candidate) != expected_video_hash:
+        return None
+    return candidate
+
+
+def _validate_target_is_retryable(target_dir: Path) -> None:
+    release_output = target_dir / "karaoke.mp4"
+    manifest_path = target_dir / "production_data" / "manifest.json"
+    covered_mp3 = target_dir / "song_with_cover.mp3"
+    if release_output.exists():
+        raise FileExistsError(f"Target folder already contains published output: {target_dir}")
+    if not manifest_path.exists():
+        if covered_mp3.exists():
+            raise FileExistsError(
+                f"Target folder contains an unmanaged prior output: {covered_mp3}"
+            )
+        return
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise FileExistsError(f"Cannot verify prior output ownership: {manifest_path}") from error
+    state = manifest.get("state")
+    if state == "RELEASED_VERIFIED":
+        raise FileExistsError(f"Target folder already contains a released run: {target_dir}")
 
 
 def produce_song(
@@ -73,6 +196,7 @@ def produce_song(
     *,
     ffmpeg_root: Path,
     model_name: str = "base",
+    model_cache: Path | None = None,
     cpu_threads: int = 8,
     single_image_for_both: bool = False,
     accept_unreviewed_timing: bool = False,
@@ -82,7 +206,13 @@ def produce_song(
     openrouter_config: Path = Path("config/openrouter.env"),
     openrouter_mode: str | None = None,
     timing_lock: Path | None = None,
+    progress_callback: Callable[[int, str, Mapping[str, str] | None], None] | None = None,
 ) -> ProductionResult:
+    def report(value: int, detail: str, data: Mapping[str, str] | None = None) -> None:
+        if progress_callback is not None:
+            progress_callback(value, detail, data)
+
+    report(2, "Validating inputs")
     assets = discover_song(source_dir, single_image_for_both=single_image_for_both)
     selected_karaoke_preset = get_karaoke_preset(karaoke_preset)
     resolved_font_assets = font_assets_dir.resolve()
@@ -97,16 +227,11 @@ def produce_song(
         raise FileNotFoundError(f"FFmpeg tools were not found below {ffmpeg_root}")
 
     target_dir = dest_root.resolve() / assets.source_dir.name
-    published_markers = (
-        target_dir / "song_with_cover.mp3",
-        target_dir / "karaoke.mp4",
-        target_dir / "production_data" / "manifest.json",
-    )
-    if any(path.exists() for path in published_markers):
-        raise FileExistsError(f"Target folder already contains published output: {target_dir}")
+    _validate_target_is_retryable(target_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
     production_data = target_dir / "production_data"
     production_data.mkdir(exist_ok=True)
+    prior_run_state = _read_run_state(production_data)
     router_config = OpenRouterConfig.from_file(openrouter_config.resolve()).with_mode(
         openrouter_mode
     )
@@ -117,6 +242,14 @@ def produce_song(
     staging.mkdir(parents=True)
     events_path = staging / "events.jsonl"
 
+    _write_run_state(
+        production_data,
+        job_id=job_id,
+        run_id=run_id,
+        stage="INTAKE",
+        detail="Inputs validated and isolated staging created",
+    )
+
     source_hash_before = sha256_file(assets.mp3)
     cover_hash = sha256_file(assets.cover)
     background_hash = sha256_file(assets.background)
@@ -126,6 +259,7 @@ def produce_song(
         encoding="utf-8",
     )
 
+    report(10, "Embedding cover artwork")
     staged_mp3 = staging / "song_with_cover.mp3"
     mp3_qc = embed_cover(assets.mp3, assets.cover, staged_mp3)
     mp3_qc["audio_frames_unchanged"] = (
@@ -135,9 +269,22 @@ def produce_song(
     if not mp3_qc["audio_frames_unchanged"] or not mp3_qc["cover_matches_input"]:
         raise RuntimeError("MP3 integrity verification failed")
 
-    lyric_lines = extract_lyrics(assets.mp3)
-    embedded_lyrics_inventory = inspect_embedded_lyrics(assets.mp3)
-    _write_json(production_data / "embedded_lyrics.json", asdict(embedded_lyrics_inventory))
+    report(20, "Resolving canonical lyrics")
+    canonical_lyrics = resolve_canonical_lyrics(assets.source_dir, assets.mp3)
+    lyric_lines = canonical_lyrics.lines
+    embedded_lyrics_inventory = canonical_lyrics.inventory
+    embedded_payload = asdict(embedded_lyrics_inventory)
+    embedded_payload["source_kind"] = canonical_lyrics.source_kind
+    embedded_payload["source_file"] = canonical_lyrics.source_path.name
+    _write_json(production_data / "embedded_lyrics.json", embedded_payload)
+    _write_run_state(
+        production_data,
+        job_id=job_id,
+        run_id=run_id,
+        stage="LYRICS",
+        detail=f"Canonical lyrics resolved from {canonical_lyrics.source_kind}",
+        artifacts={"lyrics_sha256": embedded_lyrics_inventory.selected_uslt_sha256},
+    )
     audio_duration = float(MP3(assets.mp3).info.length)
     verified_lock = None
     if timing_lock is not None:
@@ -152,11 +299,23 @@ def produce_song(
         full_song_fallback_used = False
         timing = verified_lock.timing
     else:
+        report(30, "Transcribing audio")
+        _write_run_state(
+            production_data,
+            job_id=job_id,
+            run_id=run_id,
+            stage="TRANSCRIBE",
+            detail=f"Transcribing with Faster Whisper {model_name}",
+        )
         transcript, transcription_info = transcribe(
             assets.mp3,
             canonical_lyrics=lyric_lines,
             model_name=model_name,
-            model_cache=dest_root.resolve() / ".models" / "faster-whisper",
+            model_cache=(
+                model_cache.resolve()
+                if model_cache is not None
+                else PathManager.detect().model_cache("faster-whisper")
+            ),
             cpu_threads=cpu_threads,
         )
         asr_window_duration = transcript[-1].end - transcript[0].start
@@ -166,9 +325,7 @@ def produce_song(
         timing,
         maximum_normalized_characters_per_second=None if verified_lock else 12.0,
     )
-    timing_diagnostics = build_timing_diagnostics(
-        timing, transcript, audio_duration=audio_duration
-    )
+    timing_diagnostics = build_timing_diagnostics(timing, transcript, audio_duration=audio_duration)
     openrouter_transcription: dict[str, object] = {
         "mode": router_config.mode.value,
         "status": "SKIPPED_HUMAN_TIMING_LOCK" if verified_lock else "SKIPPED_MODE_OFF",
@@ -232,6 +389,7 @@ def produce_song(
                     "auto_triggered": auto_needed,
                     "error": f"{type(last_error).__name__}: {last_error}",
                 }
+    report(55, "Validating lyric timing")
     timing_payload = {
         "schema_version": 1,
         "method": (
@@ -281,6 +439,15 @@ def produce_song(
             else embedded_lyrics_inventory.selected_uslt_sha256,
         ),
     )
+    _write_run_state(
+        production_data,
+        job_id=job_id,
+        run_id=run_id,
+        stage="TIMING",
+        detail=f"Timing proposal status: {timeline_validation.status}",
+        artifacts={"timing_status": timeline_validation.status},
+    )
+    report(65, "Running pre-render validation")
     pre_render_report = build_pre_render_validation_report(
         audio_payload_sha256=mp3_qc["source_audio_payload_sha256"],
         audio_duration_seconds=audio_duration,
@@ -293,83 +460,9 @@ def produce_song(
     if verified_lock and pre_render_report["release_decision"] != "PASS_FOR_REVIEW_RENDER":
         raise RuntimeError("Human-locked timing failed pre-render validation")
 
-    if timeline_validation.status == "BLOCKED":
-        source_hash_after = sha256_file(assets.mp3)
-        if source_hash_after != source_hash_before:
-            raise RuntimeError("Source MP3 changed during production")
-        final_mp3 = target_dir / "song_with_cover.mp3"
-        os.replace(staged_mp3, final_mp3)
-        qc_path = production_data / "qc_report.json"
-        _write_json(
-            qc_path,
-            {
-                "schema_version": 1,
-                "source_immutable": True,
-                "mp3": mp3_qc,
-                "mp4": None,
-                "timing": {
-                    "review_required": True,
-                    "accepted_for_test_only": False,
-                    "measured_alignment_kpi": False,
-                    "structural_validation": timeline_validation.to_primitive(),
-                },
-                "karaoke_sampling_qc": {"status": "NOT_RUN_TIMING_BLOCKED"},
-                "openrouter": {
-                    "mode": router_config.mode.value,
-                    "transcription": openrouter_transcription,
-                    "spend": router_spend.to_primitive(),
-                },
-            },
-        )
-        manifest_path = production_data / "manifest.json"
-        _write_json(
-            manifest_path,
-            {
-                "schema_version": 1,
-                "job_id": job_id,
-                "run_id": run_id,
-                "state": "BLOCKED_TIMING_VALIDATION",
-                "source": {
-                    "folder": str(assets.source_dir),
-                    "mp3": assets.mp3.name,
-                    "mp3_sha256": source_hash_before,
-                },
-                "outputs": {
-                    "mp3": {"path": final_mp3.name, "sha256": sha256_file(final_mp3)},
-                    "mp4": None,
-                },
-                "tools": {
-                    "faster_whisper_model": model_name,
-                    "openrouter_mode": router_config.mode.value,
-                    "openrouter_spend": router_spend.to_primitive(),
-                },
-                "karaoke_visual_preset": selected_karaoke_preset.to_primitive(),
-                "started_at": started_at,
-                "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
-            },
-        )
-        with events_path.open("a", encoding="utf-8") as stream:
-            stream.write(
-                json.dumps(
-                    {"event": "job_run.blocked_timing_validation", "run_id": run_id},
-                    ensure_ascii=False,
-                )
-                + "\n"
-            )
-        return ProductionResult(
-            job_id,
-            run_id,
-            assets.source_dir,
-            target_dir,
-            final_mp3,
-            None,
-            manifest_path,
-            qc_path,
-            "BLOCKED_TIMING_VALIDATION",
-        )
-
     canvas = video_canvas(assets.background)
     ass_path = staging / "karaoke.ass"
+    report(75, "Generating karaoke layout")
     write_ass(
         timing,
         ass_path,
@@ -379,17 +472,44 @@ def produce_song(
         font_path=selected_font_file,
     )
     staged_mp4 = staging / "karaoke.mp4"
-    video_probe = run_ffmpeg_render(
-        ffmpeg,
-        ffprobe,
-        image=assets.background,
-        audio=assets.mp3,
-        ass_path=ass_path,
-        destination=staged_mp4,
-        preset=ffmpeg_preset,
-        canvas=canvas,
-        fonts_dir=resolved_font_assets,
+    ass_sha256 = sha256_file(ass_path)
+    reusable_render = (
+        _reusable_diagnostic_render(
+            prior_run_state,
+            target_dir,
+            source_sha256=source_hash_before,
+            background_sha256=background_hash,
+            ass_sha256=ass_sha256,
+        )
+        if verified_lock is None
+        else None
     )
+    report(80, "Verifying previous render" if reusable_render else "Rendering video")
+    _write_run_state(
+        production_data,
+        job_id=job_id,
+        run_id=run_id,
+        stage="RENDER",
+        detail="Verifying checkpoint render" if reusable_render else "FFmpeg render in progress",
+        artifacts={"ass_sha256": ass_sha256},
+    )
+    if reusable_render:
+        video_probe = verify_rendered_video(ffmpeg, ffprobe, reusable_render)
+    else:
+        video_probe = run_ffmpeg_render(
+            ffmpeg,
+            ffprobe,
+            image=assets.background,
+            audio=assets.mp3,
+            ass_path=ass_path,
+            destination=staged_mp4,
+            preset=ffmpeg_preset,
+            canvas=canvas,
+            fonts_dir=resolved_font_assets,
+            progress_callback=lambda fraction, detail, data: report(
+                80 + round(fraction * 11), detail, data
+            ),
+        )
 
     source_hash_after = sha256_file(assets.mp3)
     if source_hash_after != source_hash_before:
@@ -398,22 +518,38 @@ def produce_song(
     (production_data / "karaoke.ass").write_bytes(ass_path.read_bytes())
 
     final_mp3 = target_dir / "song_with_cover.mp3"
-    rendered_mp4 = production_data / (
-        "review_candidate.mp4" if verified_lock else "diagnostic_candidate.mp4"
+    rendered_mp4 = (
+        production_data / "review_candidate.mp4"
+        if verified_lock
+        else target_dir / "karaoke_diagnostic.mp4"
     )
     os.replace(staged_mp3, final_mp3)
-    os.replace(staged_mp4, rendered_mp4)
+    if reusable_render is None:
+        os.replace(staged_mp4, rendered_mp4)
+    _write_run_state(
+        production_data,
+        job_id=job_id,
+        run_id=run_id,
+        stage="QC",
+        detail="Render complete; media and sampled-frame QC in progress",
+        artifacts={
+            "rendered_mp4": str(rendered_mp4.relative_to(target_dir)),
+            "rendered_mp4_sha256": sha256_file(rendered_mp4),
+            "source_sha256": source_hash_before,
+            "background_sha256": background_hash,
+            "ass_sha256": ass_sha256,
+        },
+    )
     alignment_checks = build_alignment_checks(timing, transcript)
     frame_samples = select_frame_samples(alignment_checks, count=12)
+    report(92, "Running media quality checks")
     frame_evidence = extract_qc_frames(
         ffmpeg,
         rendered_mp4,
         frame_samples,
         production_data / "qc_frames",
     )
-    alignment_review_count = sum(
-        check.status == "REVIEW_REQUIRED" for check in alignment_checks
-    )
+    alignment_review_count = sum(check.status == "REVIEW_REQUIRED" for check in alignment_checks)
     vision_config = OpenRouterVisionConfig.from_file(openrouter_config.resolve())
     vision_qc = inspect_samples(
         vision_config,
@@ -439,7 +575,15 @@ def produce_song(
             "structural_validation": timeline_validation.to_primitive(),
         },
         "karaoke_sampling_qc": {
-            "status": "AWAITING_FINAL_LISTENING_QC" if verified_lock else "REVIEW_REQUIRED",
+            "status": (
+                "AWAITING_FINAL_LISTENING_QC"
+                if verified_lock
+                else (
+                    "DIAGNOSTIC_RENDER_TIMING_BLOCKED"
+                    if timeline_validation.status == "BLOCKED"
+                    else "REVIEW_REQUIRED"
+                )
+            ),
             "sample_count": len(frame_evidence),
             "all_sampled_frames_have_subtitle_pixels": all(
                 bool(item["subtitle_pixels_present"]) for item in frame_evidence
@@ -458,19 +602,20 @@ def produce_song(
     }
     qc_path = production_data / "qc_report.json"
     _write_json(qc_path, qc_payload)
+    production_state = (
+        "AWAITING_FINAL_LISTENING_QC"
+        if verified_lock
+        else (
+            "DIAGNOSTIC_VIDEO_READY_TIMING_BLOCKED"
+            if timeline_validation.status == "BLOCKED"
+            else "AWAITING_TIMING_REVIEW"
+        )
+    )
     manifest_payload = {
         "schema_version": 1,
         "job_id": job_id,
         "run_id": run_id,
-        "state": (
-            "BLOCKED_TIMING_VALIDATION"
-            if timeline_validation.status == "BLOCKED"
-            else (
-                "AWAITING_FINAL_LISTENING_QC"
-                if verified_lock
-                else "AWAITING_TIMING_REVIEW"
-            )
-        ),
+        "state": production_state,
         "source": {
             "folder": str(assets.source_dir),
             "mp3": assets.mp3.name,
@@ -479,9 +624,7 @@ def produce_song(
             "cover_sha256": cover_hash,
             "background": assets.background.name,
             "background_sha256": background_hash,
-            "single_image_explicitly_mapped_to_both_roles": (
-                assets.cover == assets.background
-            ),
+            "single_image_explicitly_mapped_to_both_roles": (assets.cover == assets.background),
         },
         "outputs": {
             "mp3": {"path": final_mp3.name, "sha256": sha256_file(final_mp3)},
@@ -519,8 +662,25 @@ def produce_song(
         "started_at": started_at,
         "finished_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     }
+    report(98, "Writing production manifest")
     manifest_path = production_data / "manifest.json"
     _write_json(manifest_path, manifest_payload)
+    _write_run_state(
+        production_data,
+        job_id=job_id,
+        run_id=run_id,
+        stage="COMPLETE",
+        detail=production_state,
+        artifacts={
+            "manifest": str(manifest_path.relative_to(target_dir)),
+            "production_state": production_state,
+            "source_sha256": source_hash_before,
+            "background_sha256": background_hash,
+            "ass_sha256": ass_sha256,
+            "rendered_mp4": str(rendered_mp4.relative_to(target_dir)),
+            "rendered_mp4_sha256": sha256_file(rendered_mp4),
+        },
+    )
     with events_path.open("a", encoding="utf-8") as stream:
         stream.write(
             json.dumps({"event": "job_run.completed", "run_id": run_id}, ensure_ascii=False) + "\n"
@@ -531,10 +691,8 @@ def produce_song(
         assets.source_dir,
         target_dir,
         final_mp3,
-        None,
+        None if verified_lock else rendered_mp4,
         manifest_path,
         qc_path,
-        "AWAITING_FINAL_LISTENING_QC"
-        if verified_lock
-        else "AWAITING_TIMING_REVIEW",
+        production_state,
     )

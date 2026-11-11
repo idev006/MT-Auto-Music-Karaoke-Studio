@@ -23,7 +23,7 @@ Only application/orchestrator coordinates modules. Domain code imports no Qt, FF
 | PathManager | runtime and logical root IDs | validated filesystem Paths | root missing/traversal |
 | Persistence | commands, expected revision | snapshots + atomic outbox insert | revision conflict/DB busy |
 | EventGateway | durable events, consumer cursor | UI updates/snapshots | disconnect/replay |
-| BatchCoordinator | queued Jobs, resource profile | admitted fenced JobRuns | no capacity/ownership conflict |
+| ApplicationOrchestrator | queued Jobs, resource profile | isolated folder workers and immutable snapshots | no capacity/ownership conflict |
 | JobWorker | JobRun snapshot, serialized messages | branch outcomes, typed tool requests/results | stale ownership/run failure |
 
 ## Example protocol style (illustrative, not implemented)

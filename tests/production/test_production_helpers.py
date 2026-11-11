@@ -15,6 +15,7 @@ from mt_engine.production.media import LANDSCAPE_CANVAS, PORTRAIT_CANVAS, video_
 from mt_engine.production.qc import (
     build_alignment_checks,
     build_timing_diagnostics,
+    extract_qc_frames,
     select_frame_samples,
 )
 from mt_engine.production.timing_domain import validate_timeline
@@ -138,6 +139,44 @@ def test_global_alignment_does_not_consume_repeated_lyrics_near_song_start():
 
     assert timing[3].start == 100.0
     assert timing[-1].end == 117.0
+
+
+def test_unrecognized_tail_uses_remaining_audio_instead_of_asr_cutoff():
+    lyrics = ("บรรทัดแรก", "บรรทัดท้ายหนึ่ง", "บรรทัดท้ายสอง")
+    transcript = (TranscriptSegment(10.0, 25.0, "บรรทัดแรก"),)
+
+    timing = propose_timing(lyrics, transcript, audio_duration=35.0)
+
+    assert timing[0].start == 10.0
+    assert timing[0].end == 25.0
+    assert timing[-1].end == 35.0
+    assert timing[1].end <= timing[2].start
+
+
+def test_qc_frame_extraction_removes_only_managed_stale_samples(
+    tmp_path: Path, monkeypatch
+):
+    destination = tmp_path / "frames"
+    destination.mkdir()
+    (destination / "sample_99_999.00s.png").write_bytes(b"stale")
+    keep = destination / "operator-note.png"
+    keep.write_bytes(b"keep")
+    monkeypatch.setattr(
+        "mt_engine.production.qc.subprocess.run",
+        lambda command, **_kwargs: Image.new("RGB", (32, 32)).save(command[-1]),
+    )
+    checks = build_alignment_checks(
+        (TimedLine(1.0, 2.0, "หนึ่ง"),),
+        (TranscriptSegment(1.0, 2.0, "หนึ่ง"),),
+    )
+
+    evidence = extract_qc_frames(
+        tmp_path / "ffmpeg.exe", tmp_path / "video.mp4", checks, destination
+    )
+
+    assert len(evidence) == 1
+    assert not (destination / "sample_99_999.00s.png").exists()
+    assert keep.read_bytes() == b"keep"
 
 
 def test_ass_generation_escapes_override_syntax(tmp_path: Path):

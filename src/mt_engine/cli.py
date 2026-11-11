@@ -23,6 +23,7 @@ def _parser() -> argparse.ArgumentParser:
     produce.add_argument("--dest-root", type=Path, required=True)
     produce.add_argument("--ffmpeg-root", type=Path, required=True)
     produce.add_argument("--model", default="base")
+    produce.add_argument("--model-cache", type=Path)
     produce.add_argument("--cpu-threads", type=int, default=8)
     produce.add_argument("--ffmpeg-preset", default="veryfast")
     produce.add_argument("--karaoke-preset", default=DEFAULT_PRESET_ID)
@@ -83,6 +84,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.dest_root,
             ffmpeg_root=args.ffmpeg_root,
             model_name=args.model,
+            model_cache=args.model_cache,
             cpu_threads=args.cpu_threads,
             single_image_for_both=args.single_image_for_both,
             accept_unreviewed_timing=args.accept_unreviewed_timing,

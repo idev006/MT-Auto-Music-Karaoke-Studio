@@ -5,8 +5,11 @@ __pycache__/
 .venv/
 dist/
 build/
+release/
+installer_e2e_*/
 *.egg-info/
 data/
+models/
 output/
 src_for_test/
 dest_for_test/

@@ -12,14 +12,14 @@ This document makes the approval/test relationship explicit. State values: DOCUM
 | karaoke display 14 property groups | Layout/Renderer | 05 | schema/visual tests | DOCUMENTED |
 | 8 x 5 presets | Creative/Renderer | 05 | version/preview parity | DOCUMENTED |
 | R-301 headless operational engine | Application | 02, 06, 12, ADR-0003 | real-media E2E plus state/ownership/recovery tests | IMPLEMENTED (direct single-folder slice) |
-| R-308 one JobWorker per folder run | Application | 02, 11, ADR-0003 | one-owner, stale-result, whole-run retry tests | DOCUMENTED |
-| R-309 bounded parallel jobs | Scheduler | 02, 11, Kanban plan | 1/2/5/10-job and HEAVY-token tests | DOCUMENTED |
+| R-308 one JobWorker per folder run | Application | 02, 08, 11, ADR-0003 | isolated folder ownership and queued cancellation tests | IMPLEMENTED (in-process UI batch slice) |
+| R-309 bounded parallel jobs | Scheduler | 02, 08, 11, Kanban plan | worker ceiling, CPU budget and executor-reuse tests | VERIFIED (synthetic producer; real-media load pending) |
 | R-310 memory/log versus SQLite ownership | Persistence/Observability | 02, 03, ADR-0003 | crash/restart and source-immutability tests | DOCUMENTED |
 | SQLite via SQLAlchemy/Alembic | Persistence | 03 | fresh migration, FK, rollback, incompatible revision tests | VERIFIED (initial schema slice) |
 | fault isolation / whole-run restart | Recovery | 04, 11, ADR-0003 | failure/cancel/interrupted/new-run scenarios | DOCUMENTED |
-| path-independent portable | PathManager | 08 | relocated root / clean PC | SCAFFOLDED |
-| numeral ASCII 0–9 | Formatting boundary | 08 | unicode-digit tests | SCAFFOLDED |
-| PySide6 UI event sync | Qt Adapter | 08 | reconnect/Qt test | DOCUMENTED |
+| path-independent portable | PathManager | 08 | validated source/output/FFmpeg roots; relocated clean PC pending | IMPLEMENTED |
+| numeral ASCII 0–9 | Formatting boundary | 08 | unicode-digit and GUI model tests | VERIFIED |
+| PySide6 UI event sync | Qt Adapter | 08 | GUI-thread snapshot polling and optional-adapter smoke test | IMPLEMENTED (batch monitor slice) |
 | KPI release gates | QA | KPI_FRAMEWORK, 07 | evidence dashboard | DOCUMENTED |
 
 ## Sign-off

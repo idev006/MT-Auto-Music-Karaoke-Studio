@@ -1,9 +1,10 @@
 # MT Auto Music & Karaoke Studio — Documentation Index
 
-Documentation baseline date: 2026-11-07. **Milestone 1 persistence slice is implemented and locally verified; the product is not implementation-complete.**
+Documentation status date: 2026-11-11. **The desktop diagnostic pipeline is implemented and real-media E2E verified; singing alignment remains the release blocker.**
 
 ## Read in this order
-1. [Project Charter](../PROJECT_CHARTER.md) — goals, scope and non-goals.
+1. [Development Handoff](14-DEVELOPMENT-HANDOFF.md) — current code, evidence, blockers and next work.
+2. [Project Charter](../PROJECT_CHARTER.md) — goals, scope and non-goals.
 2. [System Specification](01-SYSTEM-SPECIFICATION.md) — users, inputs, outputs and acceptance gates.
 3. [Architecture](../ARCHITECTURE.md) — system shape and dependency boundaries.
 4. [Pipeline and State Machine](02-PIPELINE-AND-STATE-MACHINE.md) — whole-run execution, ownership, states and retries.
@@ -31,10 +32,15 @@ Documentation baseline date: 2026-11-07. **Milestone 1 persistence slice is impl
 - PySide6 portable app follows a headless Python engine; no Installer.exe.
 - Existing MP3 remains the audio source; embed cover only into a copy; separate MP4 with a user-provided still image and synchronized lyrics.
 - Multiple folders (1–N) with independent jobs and partial success behavior.
-- One active logical JobWorker owns one folder run; failure/retry creates a new whole run rather than resuming steps in version 1.
+- One active logical JobWorker owns one folder run; retry starts analysis from intake. A verified,
+  hash-bound diagnostic render may be reused for QC without becoming release authority.
 - Multiple jobs may progress concurrently, while faster-whisper, Demucs and final FFmpeg render share one initial HEAVY token.
 - SSOT, Event Gateway, Orchestrator, Central PathManager and automated tests are foundational.
 - All program-generated displayed numbers use Arabic/ASCII digits 0–9.
 
 ## Source status
-`src/mt_engine` currently contains PathManager, number formatter, v1 boundary contracts, typed state machines and the ADR-0003 persistence/run-repository foundation. Full command repositories/coordinator, audio analysis, artwork generation, MP4 karaoke renderer and GUI are planned. Local tests are evidence only for their stated scope; no claim of passing remote CI or Windows portable acceptance is made.
+`src/mt_engine` contains the headless producer, PathManager, timing/review contracts, FFmpeg media
+adapters, OpenRouter adapters, application orchestrator and PySide6 shell. The latest local suite
+reported 150 passing tests and the v9 fixture produced a hash-verified diagnostic MP4. This is not
+evidence of accurate automatic singing alignment, remote CI or clean-PC installer acceptance. See
+the development handoff for exact evidence and remaining work.

@@ -10,6 +10,10 @@ Tests begin before GUI implementation; run headless in CI and Windows local term
 | Contract | typed adapters, event payload schema, error classification, migration version | every push |
 | Integration | DB transactions+outbox, orchestrator+worker, cache dependencies | every push |
 | Media E2E | embed APIC and compare MP3 frames; still-image MP4+ASS and decode | release / on media changes |
+
+Reliability regression coverage must include malformed FFmpeg progress values, an unrecognized lyric
+tail extending to the remaining audio window, stage-aware worker tracebacks, hash-bound diagnostic
+render reuse, retry of a non-release target and rejection of released or unmanaged outputs.
 | Karaoke sampling QC | check all lyric intervals against ASR evidence; extract 12 risk-prioritized and stratified MP4 frames; record expected text and subtitle-pixel evidence | every production run |
 
 Karaoke sampling QC is intentionally evidence-first. Without a Thai OCR adapter, pixel presence proves that text was rendered but does not prove the exact glyph content. Exact frame-text comparison therefore remains `HUMAN_REVIEW_REQUIRED`. Temporal synchronization fails closed to `REVIEW_REQUIRED` when a lyric interval has no overlapping ASR evidence or normalized text similarity is below 0.24.
@@ -32,4 +36,8 @@ Windows runners Python 3.12 as required; optional Python 3.11 compatibility test
 Each release produces a run manifest: Git SHA, OS/CPU/RAM/Python versions, dependencies, tools (FFmpeg), input fixture hashes, pass/fail/blocked, actual KPI values and logs/diagnostic links. No score without evidence.
 
 ## Immediate foundation status
-Basic PathManager and ASCII numeral tests are written. CI file exists but passing run status and full media tests are **not yet verified**. GUI, alignment and renderer are not implemented.
+PathManager, ASCII numeral, batch-coordinator concurrency, queued cancellation, duplicate admission,
+CPU-budget, executor-reuse, and optional PySide6 model/native-theme smoke tests are implemented. The
+GUI smoke test runs in a child process so importing and testing the optional adapter cannot pollute
+the headless package dependency test. Clean-PC packaging and immediate mid-stage subprocess
+cancellation are **not yet verified**.

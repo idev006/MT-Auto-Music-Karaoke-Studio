@@ -7,6 +7,7 @@ import pytest
 from mt_engine.production import runner
 from mt_engine.production.intake import SongAssets
 from mt_engine.production.lyrics import (
+    CanonicalLyrics,
     EmbeddedLyricsFrame,
     EmbeddedLyricsInventory,
     TimedLine,
@@ -22,7 +23,7 @@ def _inventory() -> EmbeddedLyricsInventory:
     return EmbeddedLyricsInventory((frame,), (), "lyrics")
 
 
-def test_blocked_timing_never_renders_or_publishes_mp4(
+def test_blocked_timing_renders_diagnostic_but_never_publishes_release_mp4(
     tmp_path: Path, monkeypatch
 ):
     source = tmp_path / "source"
@@ -41,8 +42,13 @@ def test_blocked_timing_never_renders_or_publishes_mp4(
     (ffmpeg_root / "bin" / "ffprobe.exe").write_bytes(b"tool")
 
     monkeypatch.setattr(runner, "discover_song", lambda *_args, **_kwargs: assets)
-    monkeypatch.setattr(runner, "inspect_embedded_lyrics", lambda _path: _inventory())
-    monkeypatch.setattr(runner, "extract_lyrics", lambda _path: ("เนื้อร้องยาวมากเกินเวลา",))
+    monkeypatch.setattr(
+        runner,
+        "resolve_canonical_lyrics",
+        lambda _source, path: CanonicalLyrics(
+            ("เนื้อร้องยาวมากเกินเวลา",), _inventory(), path, "PRIMARY_MP3_USLT"
+        ),
+    )
     monkeypatch.setattr(
         runner,
         "transcribe",
@@ -69,10 +75,16 @@ def test_blocked_timing_never_renders_or_publishes_mp4(
 
     monkeypatch.setattr(runner, "embed_cover", fake_embed)
 
-    def unexpected_render(*_args, **_kwargs):
-        raise AssertionError("blocked timing must not reach FFmpeg rendering")
+    monkeypatch.setattr(runner, "video_canvas", lambda _path: (1920, 1080))
 
-    monkeypatch.setattr(runner, "run_ffmpeg_render", unexpected_render)
+    def fake_render(*_args, destination: Path, **_kwargs):
+        destination.write_bytes(b"diagnostic-mp4")
+        return {"streams": []}
+
+    monkeypatch.setattr(runner, "run_ffmpeg_render", fake_render)
+    monkeypatch.setattr(runner, "extract_qc_frames", lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(runner, "inspect_samples", lambda *_args, **_kwargs: {"status": "SKIP"})
+    monkeypatch.setattr(runner, "_tool_version", lambda _path: "fake 1.0")
 
     result = runner.produce_song(
         source,
@@ -82,12 +94,14 @@ def test_blocked_timing_never_renders_or_publishes_mp4(
         openrouter_mode="off",
     )
 
-    assert result.state == "BLOCKED_TIMING_VALIDATION"
-    assert result.mp4_output is None
+    assert result.state == "DIAGNOSTIC_VIDEO_READY_TIMING_BLOCKED"
+    assert result.mp4_output == result.target_dir / "karaoke_diagnostic.mp4"
+    assert result.mp4_output.read_bytes() == b"diagnostic-mp4"
     assert not (result.target_dir / "karaoke.mp4").exists()
     manifest = json.loads(result.manifest.read_text(encoding="utf-8"))
     assert manifest["outputs"]["mp4"] is None
-    assert manifest["state"] == "BLOCKED_TIMING_VALIDATION"
+    assert manifest["outputs"]["diagnostic_candidate"]["path"] == "karaoke_diagnostic.mp4"
+    assert manifest["state"] == "DIAGNOSTIC_VIDEO_READY_TIMING_BLOCKED"
 
 
 def test_human_locked_timing_bypasses_asr_and_publishes_mp4(
@@ -144,8 +158,13 @@ def test_human_locked_timing_bypasses_asr_and_publishes_mp4(
     )
 
     monkeypatch.setattr(runner, "discover_song", lambda *_args, **_kwargs: assets)
-    monkeypatch.setattr(runner, "inspect_embedded_lyrics", lambda _path: _inventory())
-    monkeypatch.setattr(runner, "extract_lyrics", lambda _path: lyrics)
+    monkeypatch.setattr(
+        runner,
+        "resolve_canonical_lyrics",
+        lambda _source, path: CanonicalLyrics(
+            lyrics, _inventory(), path, "PRIMARY_MP3_USLT"
+        ),
+    )
     monkeypatch.setattr(
         runner,
         "transcribe",
@@ -270,3 +289,62 @@ def test_release_rejects_signoff_for_different_candidate(tmp_path: Path):
 
     with pytest.raises(ReleaseSignoffError, match="candidate_sha256"):
         release_reviewed_candidate(target, signoff)
+
+
+def test_target_allows_retry_of_non_release_manifest(tmp_path: Path):
+    target = tmp_path / "target"
+    data = target / "production_data"
+    data.mkdir(parents=True)
+    (target / "song_with_cover.mp3").write_bytes(b"prior")
+    (data / "manifest.json").write_text(
+        json.dumps({"state": "DIAGNOSTIC_VIDEO_READY_TIMING_BLOCKED"}),
+        encoding="utf-8",
+    )
+
+    runner._validate_target_is_retryable(target)
+
+
+def test_target_rejects_published_or_unmanaged_output(tmp_path: Path):
+    published = tmp_path / "published"
+    published.mkdir()
+    (published / "karaoke.mp4").write_bytes(b"release")
+    with pytest.raises(FileExistsError, match="published output"):
+        runner._validate_target_is_retryable(published)
+
+    unmanaged = tmp_path / "unmanaged"
+    unmanaged.mkdir()
+    (unmanaged / "song_with_cover.mp3").write_bytes(b"unknown")
+    with pytest.raises(FileExistsError, match="unmanaged prior output"):
+        runner._validate_target_is_retryable(unmanaged)
+
+
+def test_qc_checkpoint_reuses_only_hash_bound_diagnostic_render(tmp_path: Path):
+    target = tmp_path / "target"
+    target.mkdir()
+    video = target / "karaoke_diagnostic.mp4"
+    video.write_bytes(b"render")
+    state = {
+        "stage": "QC",
+        "artifacts": {
+            "source_sha256": "audio",
+            "background_sha256": "background",
+            "ass_sha256": "ass",
+            "rendered_mp4": video.name,
+            "rendered_mp4_sha256": sha256_file(video),
+        },
+    }
+
+    assert runner._reusable_diagnostic_render(
+        state,
+        target,
+        source_sha256="audio",
+        background_sha256="background",
+        ass_sha256="ass",
+    ) == video
+    assert runner._reusable_diagnostic_render(
+        state,
+        target,
+        source_sha256="changed",
+        background_sha256="background",
+        ass_sha256="ass",
+    ) is None

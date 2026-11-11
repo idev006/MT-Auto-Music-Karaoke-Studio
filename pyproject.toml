@@ -18,9 +18,12 @@ dependencies = [
 
 [project.scripts]
 mt-karaoke = "mt_engine.cli:main"
+mt-karaoke-ui = "mt_engine.ui.app:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.6"]
+gui = ["PySide6-Essentials>=6.8,<6.9"]
+packaging = ["PyInstaller>=6.11,<7"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -28,7 +31,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+cache_dir = "data/.pytest_cache"
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+cache-dir = "data/.ruff_cache"

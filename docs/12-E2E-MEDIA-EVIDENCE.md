@@ -35,3 +35,24 @@ The single portrait image was explicitly authorized for both cover and video bac
 Lyrics were read from embedded ID3 text. The earlier VAD-enabled pass detected only a short island and could not synchronize the song. The current pass disables VAD, supplies canonical lyrics as the decoding prompt, and produces ASR segments spanning 241.64 seconds of the 272.43-second song. A monotonic fuzzy aligner anchors canonical groups of one to three lines to those timestamps and interpolates only unrecognized gaps; automated checks require all 46 events to remain ordered and non-overlapping.
 
 The risk-prioritized QC correctly demonstrates that this is still insufficient for release: 16 interpolated/low-confidence lines require review, including the user-reported line near 2:01. The run records `SUCCEEDED_WITH_TEST_TIMING_OVERRIDE`, `review_required=true`, and `measured_alignment_kpi=false`. The next alignment tranche needs vocal separation and/or a Thai forced-alignment adapter before the temporal gate can pass.
+
+## Latest diagnostic run — 2026-11-11
+
+This later record supersedes the earlier run only for current implementation behavior. It remains
+diagnostic evidence, not synchronization acceptance.
+
+- Fixture: `src_for_test/อยู่เป็นเพื่อนกันนาน ๆ นะ v9`
+- Run ID: `15aa43ea247048c2ba543c5dd879981c`
+- Output: `dest_for_test/อยู่เป็นเพื่อนกันนาน ๆ นะ v9/karaoke_diagnostic.mp4`
+- Video SHA-256: `7293c08fd4a6697612c20300b65cf9995bd7d76609014e7086038a410147f2c3`
+- Media verification: complete FFmpeg decode PASS; H.264 + AAC; 1080x1920
+- QC sampling: 12 current managed frames; subtitle-region pixels present in all samples
+- OpenRouter spend: USD 0.00356855
+- Pipeline checkpoint: `COMPLETE`
+- Product state: `DIAGNOSTIC_VIDEO_READY_TIMING_BLOCKED`
+- Timeline: `BLOCKED`, 6 findings; 8 alignment lines require review
+- Automated suite at the same code state: Ruff PASS; pytest `150 passed`
+
+The run proves intake, USLT sidecar fallback, ASR, optional cloud evidence, ASS, FFmpeg, progress,
+QC, checkpoint and diagnostic publication. It does not prove lyric/audio synchronization. The
+manifest release output remains null and no `karaoke.mp4` was published.

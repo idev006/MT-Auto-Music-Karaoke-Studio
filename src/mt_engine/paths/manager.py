@@ -45,8 +45,45 @@ class PathManager:
     def resource(self, *parts: str) -> Path:
         return self._inside(self.bundle_root / "resources", *parts)
 
+    def bundle(self, *parts: str) -> Path:
+        return self._inside(self.bundle_root, *parts)
+
     def data(self, *parts: str) -> Path:
         return self._inside(self.data_root, *parts)
+
+    def app(self, *parts: str) -> Path:
+        return self._inside(self.app_root, *parts)
+
+    def model_cache(self, *parts: str) -> Path:
+        resolved = self._inside(self.app_root / "models", *parts)
+        resolved.mkdir(parents=True, exist_ok=True)
+        if not os.access(resolved, os.W_OK):
+            raise ValueError(f"Model cache is not writable: {resolved}")
+        return resolved
+
+    @staticmethod
+    def source_folder(path: Path) -> Path:
+        resolved = path.resolve()
+        if not resolved.is_dir():
+            raise ValueError(f"Source folder does not exist: {resolved}")
+        return resolved
+
+    @staticmethod
+    def output_root(path: Path) -> Path:
+        resolved = path.resolve()
+        resolved.mkdir(parents=True, exist_ok=True)
+        if not resolved.is_dir() or not os.access(resolved, os.W_OK):
+            raise ValueError(f"Output root is not writable: {resolved}")
+        return resolved
+
+    @staticmethod
+    def ffmpeg_root(path: Path) -> Path:
+        resolved = path.resolve()
+        if not (resolved / "bin" / "ffmpeg.exe").is_file():
+            raise ValueError(f"FFmpeg executable was not found below: {resolved}")
+        if not (resolved / "bin" / "ffprobe.exe").is_file():
+            raise ValueError(f"FFprobe executable was not found below: {resolved}")
+        return resolved
 
     @staticmethod
     def _inside(base: Path, *parts: str) -> Path:

@@ -3,7 +3,11 @@ from pathlib import Path
 import pytest
 from mutagen.id3 import ID3, SYLT, USLT
 
-from mt_engine.production.lyrics import extract_lyrics, inspect_embedded_lyrics
+from mt_engine.production.lyrics import (
+    extract_lyrics,
+    inspect_embedded_lyrics,
+    resolve_canonical_lyrics,
+)
 
 
 def _tagged_file(path: Path, frames: list[object]) -> Path:
@@ -49,3 +53,32 @@ def test_conflicting_uslt_frames_fail_closed(tmp_path: Path):
 
     with pytest.raises(ValueError, match="conflicting canonical lyrics"):
         inspect_embedded_lyrics(path)
+
+
+def test_resolver_uses_single_uslt_sidecar_when_primary_has_no_lyrics(tmp_path: Path):
+    primary = _tagged_file(tmp_path / "song.mp3", [])
+    sidecar = _tagged_file(
+        tmp_path / "canonical.mp3--",
+        [USLT(encoding=3, lang="tha", desc="canonical", text="หนึ่ง\nสอง")],
+    )
+
+    resolved = resolve_canonical_lyrics(tmp_path, primary)
+
+    assert resolved.lines == ("หนึ่ง", "สอง")
+    assert resolved.source_path == sidecar
+    assert resolved.source_kind == "SIDECAR_MP3_USLT"
+
+
+def test_resolver_rejects_ambiguous_uslt_sidecars(tmp_path: Path):
+    primary = _tagged_file(tmp_path / "song.mp3", [])
+    _tagged_file(
+        tmp_path / "first.mp3--",
+        [USLT(encoding=3, lang="tha", desc="canonical", text="หนึ่ง")],
+    )
+    _tagged_file(
+        tmp_path / "second.mp3--",
+        [USLT(encoding=3, lang="tha", desc="canonical", text="สอง")],
+    )
+
+    with pytest.raises(ValueError, match="Multiple canonical lyric sidecars"):
+        resolve_canonical_lyrics(tmp_path, primary)

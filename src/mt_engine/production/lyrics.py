@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import threading
 import unicodedata
 from dataclasses import dataclass
 from difflib import SequenceMatcher
@@ -11,6 +12,8 @@ from pathlib import Path
 
 from faster_whisper import WhisperModel
 from mutagen.id3 import ID3
+
+_ASR_GATE = threading.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +64,14 @@ class EmbeddedLyricsInventory:
     uslt: tuple[EmbeddedLyricsFrame, ...]
     sylt: tuple[EmbeddedLyricsFrame, ...]
     selected_uslt_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class CanonicalLyrics:
+    lines: tuple[str, ...]
+    inventory: EmbeddedLyricsInventory
+    source_path: Path
+    source_kind: str
 
 
 def _displayable_lines(text: str) -> tuple[str, ...]:
@@ -128,7 +139,58 @@ def extract_lyrics(mp3_path: Path) -> tuple[str, ...]:
     return _displayable_lines(selected.text)
 
 
+def resolve_canonical_lyrics(source_dir: Path, primary_mp3: Path) -> CanonicalLyrics:
+    """Resolve canonical text without allowing ASR to invent the lyric identity."""
+    try:
+        inventory = inspect_embedded_lyrics(primary_mp3)
+    except ValueError as error:
+        if str(error) != "No embedded USLT lyrics were found":
+            raise
+    else:
+        return CanonicalLyrics(
+            extract_lyrics(primary_mp3), inventory, primary_mp3, "PRIMARY_MP3_USLT"
+        )
+
+    sidecars: list[tuple[Path, EmbeddedLyricsInventory]] = []
+    for candidate in sorted(source_dir.glob("*.mp3--")):
+        try:
+            sidecars.append((candidate, inspect_embedded_lyrics(candidate)))
+        except ValueError as error:
+            if str(error) != "No embedded USLT lyrics were found":
+                raise ValueError(
+                    f"Invalid canonical lyric sidecar {candidate.name}: {error}"
+                ) from error
+    if not sidecars:
+        raise ValueError(
+            "No canonical lyrics were found in the primary MP3 or an *.mp3-- USLT sidecar"
+        )
+    if len(sidecars) != 1:
+        names = ", ".join(path.name for path, _inventory in sidecars)
+        raise ValueError(f"Multiple canonical lyric sidecars were found: {names}")
+    path, inventory = sidecars[0]
+    return CanonicalLyrics(extract_lyrics(path), inventory, path, "SIDECAR_MP3_USLT")
+
+
 def transcribe(
+    audio_path: Path,
+    *,
+    canonical_lyrics: tuple[str, ...],
+    model_name: str,
+    model_cache: Path,
+    cpu_threads: int,
+) -> tuple[tuple[TranscriptSegment, ...], dict[str, str | float]]:
+    """Serialize the RAM-heavy model lifecycle and protect shared downloads."""
+    with _ASR_GATE:
+        return _transcribe_under_gate(
+            audio_path,
+            canonical_lyrics=canonical_lyrics,
+            model_name=model_name,
+            model_cache=model_cache,
+            cpu_threads=cpu_threads,
+        )
+
+
+def _transcribe_under_gate(
     audio_path: Path,
     *,
     canonical_lyrics: tuple[str, ...],
@@ -203,7 +265,9 @@ def propose_timing(
         start = edge_padding
         end = max(start + 0.1, audio_duration - edge_padding)
     if not (audio_duration and observed_duration < audio_duration * 0.35):
-        aligned = _text_aligned_timing(lyrics, transcript)
+        aligned = _text_aligned_timing(
+            lyrics, transcript, audio_duration=audio_duration
+        )
         if aligned is not None:
             return aligned
     return _proportional_timing(lyrics, start, end)
@@ -230,7 +294,10 @@ def _proportional_timing(
 
 
 def _text_aligned_timing(
-    lyrics: tuple[str, ...], transcript: tuple[TranscriptSegment, ...]
+    lyrics: tuple[str, ...],
+    transcript: tuple[TranscriptSegment, ...],
+    *,
+    audio_duration: float | None = None,
 ) -> tuple[TimedLine, ...] | None:
     """Anchor canonical lines to monotonic ASR segments, then fill only gaps."""
     anchors: dict[int, tuple[float, float]] = {}
@@ -266,7 +333,9 @@ def _text_aligned_timing(
             transcript[0].start if left_index == -1 else anchors[left_index][1]
         )
         right_time = (
-            transcript[-1].end if right_index == len(lyrics) else anchors[right_index][0]
+            max(transcript[-1].end, audio_duration or 0.0)
+            if right_index == len(lyrics)
+            else anchors[right_index][0]
         )
         if right_time <= left_time:
             required = 0.5 * len(missing)

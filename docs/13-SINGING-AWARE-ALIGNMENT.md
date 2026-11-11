@@ -54,14 +54,14 @@ A final `karaoke.mp4` is a released artifact, not merely a successful FFmpeg ren
 
 ## OpenRouter modes
 
-OpenRouter is evidence augmentation, not release authority. `off` performs no external request. `auto` requests timestamped cloud transcription only when the local timeline is blocked, ASR coverage is below 75%, or any canonical lyric line lacks sufficient overlapping ASR evidence; Vision QC runs only for a locked review candidate or when alignment review remains. `always` requests the cloud transcription second opinion for every non-locked run and performs eligible Vision QC. Candidate selection is deterministic: structural status, alignment-pass count, then ASR-window coverage. A cloud result can replace the local proposal only when this score is strictly better. It never creates `LOCKED` syllable spans.
+OpenRouter is evidence augmentation, not release authority. `off` performs no external request. `auto` requests timestamped cloud transcription only when the local timeline is blocked, ASR coverage is below 75%, or any canonical lyric line lacks sufficient overlapping ASR evidence; Vision QC runs only for a locked review candidate or when alignment review remains. `always` requests the cloud transcription second opinion for every non-locked run and performs eligible Vision QC. The current implementation selects one complete local or cloud candidate by structural status, alignment-pass count and ASR-window coverage. This winner-take-all policy is an observed limitation: it cannot use a cloud anchor to repair one unresolved region while retaining stronger local anchors. The approved next design is deterministic per-line evidence fusion over immutable provider segment IDs. Neither path may create `LOCKED` syllable spans.
 
 Transcription and Vision share one cost ledger. Configuration greater than USD 0.20 per song is rejected, each provider-reported `usage.cost` is recorded, and a request guard prevents starting work that could exceed the remaining allowance. Provider failure retains local evidence and produces `REVIEW_REQUIRED_PROVIDER_ERROR`; it cannot silently approve publication.
 Changing audio, lyrics or rendered candidate bytes invalidates the corresponding lock/sign-off.
 Automated proposals, including structurally plausible ones, cannot enter this release path without
 human locks and final listening sign-off.
 An explicitly enabled unreviewed test run may create
-`production_data/diagnostic_candidate.mp4` for engineering evidence, but its manifest output
+`karaoke_diagnostic.mp4` in the target folder for engineering evidence, but its manifest output
 `mp4` remains null and it can never be released through the final-listening command.
 
 ## Pre-render validation
@@ -83,8 +83,9 @@ No percentage-based synchronization tolerance is part of the specification.
 
 1. Timeline integrity: positive duration, no overlap, provisional minimum phrase duration 0.5 s; durations over 12 s require review.
    The provisional normalized-character rate gate is only an emergency plausibility check, not
-   proof of Thai syllable alignment. A blocked candidate may persist evidence and publish the
-   independent MP3 branch, but it must not render or publish an MP4.
+   proof of Thai syllable alignment. A blocked candidate may persist evidence, publish the
+   independent MP3 branch and render an explicitly labelled diagnostic MP4, but it must not publish
+   the release artifact `karaoke.mp4`.
 2. Render fidelity: 10–15 stratified plus risk-prioritized frames; Vision/OCR cannot override temporal failure.
 3. Phrase accuracy benchmark: onset/offset measured against human annotations.
 4. Sustain benchmark: final sung syllable/highlight offset measured against human annotations.
@@ -119,8 +120,8 @@ occurrence index, ASR evidence summary and one of `PROPOSED`, `UNKNOWN`, `CONFLI
 Repeated text therefore remains distinct across the song and unresolved evidence cannot silently
 become release timing.
 
-The runner now fails closed when structural timing validation is `BLOCKED`: it persists timing,
-QC and manifest evidence, publishes no `karaoke.mp4`, skips frame/Vision QC and records
-`BLOCKED_TIMING_VALIDATION`. The MP3 cover branch remains independently publishable. This safety
-behavior does not improve alignment accuracy; it prevents an invalid timing candidate from being
-mistaken for a completed karaoke video.
+The runner fails closed for release when structural timing validation is `BLOCKED`. With explicit
+diagnostic authorization it renders `karaoke_diagnostic.mp4`, performs frame QC and records
+`DIAGNOSTIC_VIDEO_READY_TIMING_BLOCKED`; manifest output `mp4` remains null. The MP3 cover branch
+remains independently publishable. This behavior supports engineering review without mistaking an
+invalid candidate for released karaoke.

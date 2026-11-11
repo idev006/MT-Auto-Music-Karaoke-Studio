@@ -9,7 +9,9 @@ Status: approved architecture SSOT. ADR-0003 governs worker ownership and whole-
 - A Job has at most one active JobRun.
 - An active JobRun has at most one logical JobWorker owner.
 - Retry never reopens a terminal run; it creates a new run and restarts from intake.
-- Version 1 has no durable per-step resume. Step-level progress is diagnostic, not operational truth.
+- Version 1 restarts engine analysis from intake. It may reuse a hash-bound diagnostic render after
+  revalidation when a prior run reached QC; this optimization does not reopen or mutate a terminal
+  durable JobRun and does not authorize release.
 
 ## End-to-end pipeline
 
@@ -95,6 +97,8 @@ Every durable transition includes expected revision, actor, reason, UTC timestam
 
 - Transient tool failures may receive a small bounded retry inside the same operation only when the adapter can prove no externally visible side effect. This is not durable step resume.
 - Any terminal run failure or application restart creates no automatic mid-run continuation.
+  A new retry may reuse only a source/background/ASS/MP4 hash-bound render checkpoint and must
+  decode/probe it again before QC.
 - Startup marks abandoned non-terminal runs `INTERRUPTED`, releases ownership and reconciles/quarantines staging.
 - Retry creates a new JobRun and workspace and revalidates all inputs from the beginning.
 - Pause means stop admitting new JobRuns and allow currently running operations to reach a safe terminal or cancellation boundary. Version 1 does not freeze an FFmpeg/ASR process for later continuation.

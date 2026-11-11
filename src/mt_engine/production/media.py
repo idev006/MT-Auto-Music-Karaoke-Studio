@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import unicodedata
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from math import ceil
 from pathlib import Path
@@ -48,6 +49,20 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _ffmpeg_elapsed_seconds(progress_values: Mapping[str, str]) -> float | None:
+    raw = progress_values.get("out_time")
+    if not raw:
+        return None
+    parts = raw.split(":")
+    if len(parts) != 3:
+        return None
+    try:
+        hours, minutes, seconds = parts
+        return int(hours) * 3600 + int(minutes) * 60 + float(seconds)
+    except ValueError:
+        return None
 
 
 def mp3_audio_payload_hash(path: Path) -> str:
@@ -91,8 +106,7 @@ def _ass_escape(text: str) -> str:
 
 def _visible_character_count(text: str) -> int:
     return sum(
-        not unicodedata.category(character).startswith("M")
-        and not character.isspace()
+        not unicodedata.category(character).startswith("M") and not character.isspace()
         for character in text
     )
 
@@ -105,9 +119,7 @@ def _baseline_line_measurement(
 ) -> dict[str, object]:
     """Expose the ฒ-based estimate without using it as final fit authority."""
     baseline_count = _visible_character_count(text)
-    combining_count = sum(
-        unicodedata.category(character).startswith("M") for character in text
-    )
+    combining_count = sum(unicodedata.category(character).startswith("M") for character in text)
     space_count = sum(character.isspace() for character in text)
     if font_path is None:
         representative_width = font_size * 0.56
@@ -120,9 +132,7 @@ def _baseline_line_measurement(
         space_width = float(font.getlength(" "))
         actual_width = float(font.getlength(text))
         _left, actual_top, _right, actual_bottom = font.getbbox(text, anchor="ls")
-        _base_left, base_top, _base_right, base_bottom = font.getbbox(
-            "ฒ", anchor="ls"
-        )
+        _base_left, base_top, _base_right, base_bottom = font.getbbox("ฒ", anchor="ls")
         measurement = "freetype_glyph_advance"
     result = {
         "text": text,
@@ -174,15 +184,12 @@ def _progressive_text(
         for character in span.text:
             if split_index is not None and position == split_index and character.isspace():
                 display_line_index += 1
-                characters.append(
-                    rf"\N{{\fs{line_font_sizes[display_line_index]}}}"
-                )
+                characters.append(rf"\N{{\fs{line_font_sizes[display_line_index]}}}")
             else:
                 characters.append(_ass_escape(character))
             position += 1
         rendered_spans.append(
-            f"{{\\kf{max(1, round((span.end - span.start) * 100))}}}"
-            + "".join(characters)
+            f"{{\\kf{max(1, round((span.end - span.start) * 100))}}}" + "".join(characters)
         )
     return f"{{\\fs{line_font_sizes[0]}}}" + "".join(rendered_spans)
 
@@ -225,9 +232,7 @@ class _TextLayout:
         cursor = 0.0
         previous: _LineFit | None = None
         for index, line in enumerate(self.lines):
-            decoration = line.height - (
-                line.bottom_from_baseline - line.top_from_baseline
-            )
+            decoration = line.height - (line.bottom_from_baseline - line.top_from_baseline)
             half_decoration = decoration / 2
             if previous is None:
                 cursor = -line.top_from_baseline + half_decoration
@@ -321,9 +326,7 @@ def _layout_plain_text(
                 continue
             left_fit = line_fit(left, size)
             right_fit = line_fit(right, size)
-            layout = _TextLayout(
-                (left_fit, right_fit), (gap_between(left_fit, right_fit),)
-            )
+            layout = _TextLayout((left_fit, right_fit), (gap_between(left_fit, right_fit),))
             if layout.width <= safe_width and layout.height <= allowed_height:
                 candidates.append((abs(left_fit.width - right_fit.width), layout))
         if candidates:
@@ -345,8 +348,7 @@ def _layout_plain_text(
                 if layout.height <= allowed_height:
                     break
                 reducible = [
-                    fit for fit in (left_fit, right_fit)
-                    if fit.font_size > preset.minimum_font_size
+                    fit for fit in (left_fit, right_fit) if fit.font_size > preset.minimum_font_size
                 ]
                 if not reducible:
                     layout = None
@@ -383,9 +385,7 @@ def write_ass(
 ) -> tuple[dict[str, object], ...]:
     width, height = canvas
     selected_preset = (
-        get_karaoke_preset(visual_preset)
-        if isinstance(visual_preset, str)
-        else visual_preset
+        get_karaoke_preset(visual_preset) if isinstance(visual_preset, str) else visual_preset
     )
     header = f"""[Script Info]
 ScriptType: v4.00+
@@ -404,9 +404,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
     events = []
     layout_evidence = []
     for line_index, line in enumerate(lines):
-        text_layout = _layout_plain_text(
-            line.text, selected_preset, canvas, font_path
-        )
+        text_layout = _layout_plain_text(line.text, selected_preset, canvas, font_path)
         display_text = text_layout.display_text
         line_font_sizes = text_layout.font_sizes
         display_font_size = max(line_font_sizes)
@@ -416,10 +414,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             text = _progressive_text(line, display_text, line_font_sizes)
         elif progressive:
             duration_cs = max(1, round((line.end - line.start) * 100))
-            text = (
-                f"{{\\kf{duration_cs}}}"
-                f"{_sized_ass_text(display_text, line_font_sizes)}"
-            )
+            text = f"{{\\kf{duration_cs}}}{_sized_ass_text(display_text, line_font_sizes)}"
         else:
             text = ""
         region_block, content_block = selected_preset.block_tree_for(canvas)
@@ -476,14 +471,12 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
             )
             for index, item in enumerate(text_layout.lines)
         )
-        resolved_line_blocks = LayoutCoordinator(
-            CanvasLayoutContext(*canvas)
-        ).compose(tuple(line_specs))
+        resolved_line_blocks = LayoutCoordinator(CanvasLayoutContext(*canvas)).compose(
+            tuple(line_specs)
+        )
         line_blocks = resolved_line_blocks[1:]
         if progressive:
-            text = (
-                f"{{\\an2\\pos({text_anchor_x:.1f},{text_anchor_y:.1f})}}" + text
-            )
+            text = f"{{\\an2\\pos({text_anchor_x:.1f},{text_anchor_y:.1f})}}" + text
         red = selected_preset.support_box_color[1:3]
         green = selected_preset.support_box_color[3:5]
         blue = selected_preset.support_box_color[5:7]
@@ -576,8 +569,7 @@ Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
         )
         if progressive:
             events.append(
-                f"Dialogue: 1,{_ass_time(line.start)},{_ass_time(line.end)},Karaoke,,0,0,0,,"
-                f"{text}"
+                f"Dialogue: 1,{_ass_time(line.start)},{_ass_time(line.end)},Karaoke,,0,0,0,,{text}"
             )
         else:
             for display_line, font_size, block in zip(
@@ -608,6 +600,7 @@ def run_ffmpeg_render(
     preset: str,
     canvas: tuple[int, int] | None = None,
     fonts_dir: Path | None = None,
+    progress_callback: Callable[[float, str, Mapping[str, str]], None] | None = None,
 ) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     width, height = canvas or video_canvas(image)
@@ -616,9 +609,7 @@ def run_ffmpeg_render(
         resolved_fonts = fonts_dir.resolve()
         if not resolved_fonts.is_dir():
             raise FileNotFoundError(f"ASS fonts directory was not found: {resolved_fonts}")
-        relative_fonts = Path(
-            os.path.relpath(resolved_fonts, ass_path.parent.resolve())
-        ).as_posix()
+        relative_fonts = Path(os.path.relpath(resolved_fonts, ass_path.parent.resolve())).as_posix()
         ass_filter += f":fontsdir='{relative_fonts}'"
     filtergraph = (
         f"[0:v]scale={width}:{height}:force_original_aspect_ratio=decrease,"
@@ -627,6 +618,11 @@ def run_ffmpeg_render(
     command = [
         str(ffmpeg),
         "-hide_banner",
+        "-loglevel",
+        "error",
+        "-progress",
+        "pipe:1",
+        "-nostats",
         "-y",
         "-loop",
         "1",
@@ -659,9 +655,98 @@ def run_ffmpeg_render(
         "+faststart",
         str(destination),
     ]
-    subprocess.run(command, cwd=ass_path.parent, check=True)
+    duration_probe = subprocess.run(
+        [
+            str(ffprobe),
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(audio),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    duration = max(0.001, float(duration_probe.stdout.strip()))
+    process = subprocess.Popen(
+        command,
+        cwd=ass_path.parent,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    try:
+        assert process.stdout is not None
+        progress_values: dict[str, str] = {}
+        error_lines: list[str] = []
+        for raw_line in process.stdout:
+            key, separator, value = raw_line.strip().partition("=")
+            if not separator:
+                if raw_line.strip():
+                    error_lines.append(raw_line.strip())
+                continue
+            progress_values[key] = value
+            if key == "progress":
+                elapsed = _ffmpeg_elapsed_seconds(progress_values)
+                fraction = (
+                    1.0
+                    if value == "end"
+                    else min(1.0, max(0.0, elapsed / duration))
+                    if elapsed is not None
+                    else None
+                )
+                if progress_callback is not None:
+                    metric_keys = (
+                        "frame",
+                        "fps",
+                        "bitrate",
+                        "total_size",
+                        "out_time",
+                        "speed",
+                        "dup_frames",
+                        "drop_frames",
+                        "progress",
+                    )
+                    metrics = {
+                        metric: progress_values[metric]
+                        for metric in metric_keys
+                        if metric in progress_values
+                    }
+                    if fraction is not None:
+                        progress_callback(
+                            fraction,
+                            f"FFmpeg render {round(fraction * 100)}%",
+                            metrics,
+                        )
+                progress_values = {}
+        return_code = process.wait()
+        if return_code != 0:
+            raise subprocess.CalledProcessError(return_code, command, stderr="\n".join(error_lines))
+    except BaseException:
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
+        raise
+    finally:
+        if process.stdout is not None:
+            process.stdout.close()
+    return verify_rendered_video(ffmpeg, ffprobe, destination)
+
+
+def verify_rendered_video(ffmpeg: Path, ffprobe: Path, video: Path) -> dict[str, Any]:
+    """Decode and probe an existing render before QC or checkpoint reuse."""
     subprocess.run(
-        [str(ffmpeg), "-v", "error", "-i", str(destination), "-f", "null", "-"],
+        [str(ffmpeg), "-v", "error", "-i", str(video), "-f", "null", "-"],
         check=True,
     )
     probe = subprocess.run(
@@ -673,7 +758,7 @@ def run_ffmpeg_render(
             "format=duration,size:stream=codec_type,codec_name,width,height,pix_fmt",
             "-of",
             "json",
-            str(destination),
+            str(video),
         ],
         check=True,
         capture_output=True,
@@ -698,9 +783,7 @@ def render_ass_preview(
     resolved_fonts = fonts_dir.resolve()
     if not resolved_fonts.is_dir():
         raise FileNotFoundError(f"ASS fonts directory was not found: {resolved_fonts}")
-    relative_fonts = Path(
-        os.path.relpath(resolved_fonts, ass_path.parent.resolve())
-    ).as_posix()
+    relative_fonts = Path(os.path.relpath(resolved_fonts, ass_path.parent.resolve())).as_posix()
     filtergraph = (
         f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
         f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,"
